@@ -140,7 +140,7 @@ npm run dev
 # Hoặc thủ công tạo super admin trong MongoDB
 mongosh quan_ly_phuong_tien
 db.users.insertOne({
-  email: "superadmin@system.com",
+  username: "superadmin",
   password: "$2a$12$...", // hash của SuperAdmin123!
   name: "Super Administrator",
   role: "super_admin",
@@ -222,7 +222,7 @@ npm run dev
 # 4. Test API in another terminal
 curl -X POST http://localhost:5000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"superadmin@system.com","password":"SuperAdmin123!"}'
+  -d '{"username":"superadmin","password":"SuperAdmin123!"}'
 ```
 
 ## 📞 Support

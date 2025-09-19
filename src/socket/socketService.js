@@ -251,7 +251,7 @@ class SocketService {
       const responseData = {
         accessLog: await AccessLog.findById(accessLog._id)
           .populate('vehicle')
-          .populate('owner', 'name email')
+          .populate('owner', 'name username')
           .populate('verifiedBy', 'name'),
         vehicle,
         needsManualVerification: accessLog.verificationStatus === 'pending'

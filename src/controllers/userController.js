@@ -17,7 +17,7 @@ export const getUsers = asyncHandler(async (req, res) => {
   if (search) {
     filter.$or = [
       { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
+      { username: { $regex: search, $options: 'i' } },
       { employeeId: { $regex: search, $options: 'i' } }
     ];
   }
@@ -52,17 +52,17 @@ export const getUserById = asyncHandler(async (req, res) => {
 
 // Tạo user mới (admin only)
 export const createUser = asyncHandler(async (req, res) => {
-  const { email, password, name, phone, department, employeeId, role } = req.body;
+  const { username, password, name, phone, department, employeeId, role } = req.body;
 
   // Kiểm tra quyền tạo admin
   if (role === 'admin' && req.user.role !== 'super_admin') {
     return sendErrorResponse(res, 'Không có quyền tạo tài khoản admin', 403);
   }
 
-  // Kiểm tra email đã tồn tại
-  const existingUser = await User.findOne({ email });
+  // Kiểm tra username đã tồn tại
+  const existingUser = await User.findOne({ username });
   if (existingUser) {
-    return sendErrorResponse(res, 'Email đã được sử dụng', 400);
+    return sendErrorResponse(res, 'Username đã được sử dụng', 400);
   }
 
   // Kiểm tra employeeId nếu có
@@ -74,7 +74,7 @@ export const createUser = asyncHandler(async (req, res) => {
   }
 
   const user = new User({
-    email,
+    username,
     password,
     name,
     phone,

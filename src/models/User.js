@@ -2,13 +2,15 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 const userSchema = new mongoose.Schema({
-  email: {
+  username: {
     type: String,
-    required: [true, 'Email là bắt buộc'],
+    required: [true, 'Username là bắt buộc'],
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Email không hợp lệ']
+    minlength: [3, 'Username phải có ít nhất 3 ký tự'],
+    maxlength: [50, 'Username không được vượt quá 50 ký tự'],
+    match: [/^[a-zA-Z0-9_]+$/, 'Username chỉ được chứa chữ cái, số và dấu gạch dưới']
   },
   password: {
     type: String,
@@ -68,7 +70,7 @@ const userSchema = new mongoose.Schema({
 });
 
 // Index cho tìm kiếm
-userSchema.index({ email: 1 });
+userSchema.index({ username: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1 });
 userSchema.index({ employeeId: 1 }, { sparse: true });

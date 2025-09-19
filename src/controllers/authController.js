@@ -5,12 +5,12 @@ import { asyncHandler } from '../middleware/logger.js';
 
 // Đăng ký người dùng mới
 export const register = asyncHandler(async (req, res) => {
-  const { email, password, name, phone, department, employeeId, role } = req.body;
+  const { username, password, name, phone, department, employeeId, role } = req.body;
 
-  // Kiểm tra email đã tồn tại
-  const existingUser = await User.findOne({ email });
+  // Kiểm tra username đã tồn tại
+  const existingUser = await User.findOne({ username });
   if (existingUser) {
-    return sendErrorResponse(res, 'Email đã được sử dụng', 400);
+    return sendErrorResponse(res, 'Username đã được sử dụng', 400);
   }
 
   // Kiểm tra employeeId nếu có
@@ -28,7 +28,7 @@ export const register = asyncHandler(async (req, res) => {
 
   // Tạo user mới
   const user = new User({
-    email,
+    username,
     password,
     name,
     phone,
@@ -57,13 +57,13 @@ export const register = asyncHandler(async (req, res) => {
 
 // Đăng nhập
 export const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
+  const { username, password } = req.body;
 
   // Tìm user và include password để so sánh
-  const user = await User.findOne({ email }).select('+password');
+  const user = await User.findOne({ username }).select('+password');
   
   if (!user || !(await user.comparePassword(password))) {
-    return sendErrorResponse(res, 'Email hoặc mật khẩu không chính xác', 401);
+    return sendErrorResponse(res, 'Username hoặc mật khẩu không chính xác', 401);
   }
 
   if (!user.isActive) {

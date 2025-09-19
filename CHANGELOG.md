@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] - 2025-09-19
+
+### Changed
+- **BREAKING CHANGE**: Thay đổi từ email sang username
+  - User model: field `email` đổi thành `username`
+  - Authentication: đăng nhập/đăng ký sử dụng username thay vì email
+  - Validation: cập nhật validation rules cho username
+  - Environment: `SUPER_ADMIN_EMAIL` đổi thành `SUPER_ADMIN_USERNAME`
+  - Documentation: cập nhật tất cả API docs và examples
+  - Database migration required: cần migrate existing data
+
 ## [1.0.0] - 2024-01-20
 
 ### Added
@@ -96,7 +107,7 @@ src/
 - `JWT_SECRET`: JWT signing secret
 - `JWT_REFRESH_SECRET`: Refresh token secret
 - `PYTHON_SERVER_URL`: WebSocket URL for AI server
-- `SUPER_ADMIN_EMAIL`: Default super admin email
+- `SUPER_ADMIN_USERNAME`: Default super admin username
 - `SUPER_ADMIN_PASSWORD`: Default super admin password
 
 ### License Plate Recognition

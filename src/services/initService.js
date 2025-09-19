@@ -3,7 +3,7 @@ import { User } from '../models/index.js';
 // Tạo super admin account khi khởi động ứng dụng
 export const createSuperAdmin = async () => {
   try {
-    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'superadmin@system.com';
+    const superAdminUsername = process.env.SUPER_ADMIN_USERNAME || 'superadmin';
     const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'SuperAdmin123!';
 
     // Kiểm tra xem đã có super admin chưa
@@ -16,7 +16,7 @@ export const createSuperAdmin = async () => {
 
     // Tạo super admin mới
     const superAdmin = new User({
-      email: superAdminEmail,
+      username: superAdminUsername,
       password: superAdminPassword,
       name: 'Super Administrator',
       role: 'super_admin',
@@ -24,7 +24,7 @@ export const createSuperAdmin = async () => {
     });
 
     await superAdmin.save();
-    console.log(`Super admin created successfully with email: ${superAdminEmail}`);
+    console.log(`Super admin created successfully with username: ${superAdminUsername}`);
     
     return superAdmin;
   } catch (error) {

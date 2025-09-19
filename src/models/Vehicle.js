@@ -126,7 +126,7 @@ vehicleSchema.virtual('registrationExpired').get(function() {
 
 // Static method tìm xe active
 vehicleSchema.statics.findActive = function(filter = {}) {
-  return this.find({ ...filter, isActive: true }).populate('owner', 'name email phone');
+  return this.find({ ...filter, isActive: true }).populate('owner', 'name username phone');
 };
 
 // Static method tìm xe theo chủ sở hữu
@@ -145,7 +145,7 @@ vehicleSchema.statics.findInsuranceExpiring = function(days = 30) {
       $lte: futureDate,
       $gte: new Date()
     }
-  }).populate('owner', 'name email phone');
+  }).populate('owner', 'name username phone');
 };
 
 // Method thêm lịch sử bảo trì

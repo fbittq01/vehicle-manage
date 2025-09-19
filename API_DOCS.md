@@ -23,7 +23,7 @@ Content-Type: application/json
 
 ```json
 {
-  "email": "user@example.com",
+  "username": "user123",
   "password": "Password123!",
   "name": "Nguyen Van A",
   "phone": "0123456789",
@@ -38,7 +38,7 @@ Content-Type: application/json
 
 ```json
 {
-  "email": "user@example.com",
+  "username": "user123",
   "password": "Password123!"
 }
 ```
@@ -191,8 +191,8 @@ Danh sách vehicles đang trong khuôn viên
   "message": "Error message",
   "errors": [
     {
-      "field": "email",
-      "message": "Email không hợp lệ"
+      "field": "username",
+      "message": "Username không hợp lệ"
     }
   ]
 }
