@@ -45,8 +45,8 @@ export const getAccessLogs = asyncHandler(async (req, res) => {
   const [logs, total] = await Promise.all([
     AccessLog.find(filter)
       .populate('vehicle', 'licensePlate vehicleType name color')
-      .populate('owner', 'name email phone')
-      .populate('verifiedBy', 'name email')
+      .populate('owner', 'name username phone')
+      .populate('verifiedBy', 'name username')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -64,8 +64,8 @@ export const getAccessLogById = asyncHandler(async (req, res) => {
 
   const log = await AccessLog.findById(id)
     .populate('vehicle', 'licensePlate vehicleType name color owner')
-    .populate('owner', 'name email phone department')
-    .populate('verifiedBy', 'name email');
+    .populate('owner', 'name username phone department')
+    .populate('verifiedBy', 'name username');
   
   if (!log) {
     return sendErrorResponse(res, 'Không tìm thấy access log', 404);
@@ -132,8 +132,8 @@ export const createAccessLog = asyncHandler(async (req, res) => {
   // Populate để trả về đầy đủ thông tin
   const populatedLog = await AccessLog.findById(accessLog._id)
     .populate('vehicle', 'licensePlate vehicleType name color')
-    .populate('owner', 'name email phone')
-    .populate('verifiedBy', 'name email');
+    .populate('owner', 'name username phone')
+    .populate('verifiedBy', 'name username');
 
   // Broadcast qua socket
   const responseData = {
@@ -185,8 +185,8 @@ export const verifyAccessLog = asyncHandler(async (req, res) => {
 
   const populatedLog = await AccessLog.findById(accessLog._id)
     .populate('vehicle', 'licensePlate vehicleType name color')
-    .populate('owner', 'name email phone')
-    .populate('verifiedBy', 'name email');
+    .populate('owner', 'name username phone')
+    .populate('verifiedBy', 'name username');
 
   // Broadcast verification result
   socketService.broadcast('verification_completed', {
@@ -270,7 +270,7 @@ export const getPendingLogs = asyncHandler(async (req, res) => {
   const [logs, total] = await Promise.all([
     AccessLog.find({ verificationStatus: 'pending' })
       .populate('vehicle', 'licensePlate vehicleType name color')
-      .populate('owner', 'name email phone')
+      .populate('owner', 'name username phone')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -289,7 +289,7 @@ export const getVehiclesInside = asyncHandler(async (req, res) => {
   // Populate thông tin vehicle và owner
   const populatedVehicles = await AccessLog.populate(vehiclesInside, [
     { path: 'vehicle', select: 'licensePlate vehicleType name color' },
-    { path: 'owner', select: 'name email phone' }
+    { path: 'owner', select: 'name username phone' }
   ]);
 
   sendSuccessResponse(res, {

@@ -7,7 +7,7 @@ db.createCollection('vehicles');
 db.createCollection('accesslogs');
 
 // Create indexes for better performance
-db.users.createIndex({ "email": 1 }, { unique: true });
+db.users.createIndex({ "username": 1 }, { unique: true });
 db.users.createIndex({ "employeeId": 1 }, { sparse: true, unique: true });
 db.users.createIndex({ "role": 1 });
 db.users.createIndex({ "isActive": 1 });
