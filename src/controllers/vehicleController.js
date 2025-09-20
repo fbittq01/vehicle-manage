@@ -20,8 +20,7 @@ export const getVehicles = asyncHandler(async (req, res) => {
     const normalizedSearch = normalizeLicensePlate(search);
     filter.$or = [
       { licensePlate: { $regex: normalizedSearch, $options: 'i' } },
-      { brand: { $regex: search, $options: 'i' } },
-      { model: { $regex: search, $options: 'i' } },
+      { name: { $regex: search, $options: 'i' } },
       { color: { $regex: search, $options: 'i' } }
     ];
   }
@@ -93,7 +92,7 @@ export const getVehicleByLicensePlate = asyncHandler(async (req, res) => {
 
 // Tạo vehicle mới
 export const createVehicle = asyncHandler(async (req, res) => {
-  const { licensePlate, owner, vehicleType, brand, model, color, year, description, expiryDate, insurance } = req.body;
+  const { licensePlate, owner, vehicleType, name, color, description, expiryDate } = req.body;
 
   // Chuẩn hóa biển số
   const normalizedPlate = normalizeLicensePlate(licensePlate);
@@ -123,13 +122,10 @@ export const createVehicle = asyncHandler(async (req, res) => {
     licensePlate: normalizedPlate,
     owner,
     vehicleType,
-    brand,
-    model,
+    name,
     color,
-    year,
     description,
-    expiryDate,
-    insurance
+    expiryDate
   });
 
   await vehicle.save();
@@ -265,45 +261,6 @@ export const getMyVehicles = asyncHandler(async (req, res) => {
   sendPaginatedResponse(res, vehicles, pagination, 'Lấy danh sách vehicles của bạn thành công');
 });
 
-// Thêm lịch sử bảo trì
-export const addMaintenanceRecord = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { type, description, cost, serviceProvider, date } = req.body;
-
-  const vehicle = await Vehicle.findById(id);
-  if (!vehicle) {
-    return sendErrorResponse(res, 'Không tìm thấy vehicle', 404);
-  }
-
-  // Kiểm tra quyền
-  if (req.user.role === 'user' && vehicle.owner.toString() !== req.user._id.toString()) {
-    return sendErrorResponse(res, 'Không có quyền thêm lịch sử bảo trì cho vehicle này', 403);
-  }
-
-  await vehicle.addMaintenanceRecord({
-    type,
-    description,
-    cost,
-    serviceProvider,
-    date: date || new Date()
-  });
-
-  const updatedVehicle = await Vehicle.findById(id)
-    .populate('owner', 'name username phone department');
-
-  sendSuccessResponse(res, { vehicle: updatedVehicle }, 'Thêm lịch sử bảo trì thành công');
-});
-
-// Lấy vehicles sắp hết hạn bảo hiểm
-export const getInsuranceExpiring = asyncHandler(async (req, res) => {
-  const { days = 30 } = req.query;
-  
-  const vehicles = await Vehicle.findInsuranceExpiring(parseInt(days));
-
-  sendSuccessResponse(res, { vehicles, count: vehicles.length }, 
-    `Danh sách vehicles sắp hết hạn bảo hiểm trong ${days} ngày`);
-});
-
 // Thống kê vehicles
 export const getVehicleStats = asyncHandler(async (req, res) => {
   const filter = req.user.role === 'user' ? { owner: req.user._id } : {};
@@ -324,21 +281,6 @@ export const getVehicleStats = asyncHandler(async (req, res) => {
           $push: {
             type: '$vehicleType',
             isActive: '$isActive'
-          }
-        },
-        insuranceExpiring: {
-          $sum: {
-            $cond: [
-              {
-                $and: [
-                  { $ne: ['$insurance.expiryDate', null] },
-                  { $lte: ['$insurance.expiryDate', new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)] },
-                  { $gte: ['$insurance.expiryDate', new Date()] }
-                ]
-              },
-              1,
-              0
-            ]
           }
         }
       }

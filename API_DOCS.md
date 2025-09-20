@@ -105,15 +105,9 @@ Tạo vehicle mới
   "licensePlate": "29A-123.45",
   "owner": "user_id",
   "vehicleType": "car",
-  "brand": "Toyota",
-  "model": "Camry",
+  "name": "Toyota Camry",
   "color": "Đen",
-  "year": 2020,
-  "insurance": {
-    "company": "Bảo Việt",
-    "policyNumber": "BV123456",
-    "expiryDate": "2024-12-31"
-  }
+  "description": "Xe ô tô màu đen"
 }
 ```
 
