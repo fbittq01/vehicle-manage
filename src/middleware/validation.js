@@ -207,6 +207,102 @@ export const changePasswordSchema = Joi.object({
     })
 });
 
+export const cameraSchema = Joi.object({
+  cameraId: Joi.string()
+    .max(50)
+    .required()
+    .messages({
+      'any.required': 'ID camera là bắt buộc',
+      'string.max': 'ID camera không được vượt quá 50 ký tự'
+    }),
+  name: Joi.string()
+    .max(100)
+    .required()
+    .messages({
+      'any.required': 'Tên camera là bắt buộc',
+      'string.max': 'Tên camera không được vượt quá 100 ký tự'
+    }),
+  description: Joi.string()
+    .max(500)
+    .optional(),
+  location: Joi.object({
+    gateId: Joi.string()
+      .required()
+      .messages({
+        'any.required': 'ID cổng là bắt buộc'
+      }),
+    gateName: Joi.string()
+      .max(100)
+      .optional(),
+    position: Joi.string()
+      .valid('entry', 'exit', 'both')
+      .optional(),
+    coordinates: Joi.object({
+      latitude: Joi.number()
+        .min(-90)
+        .max(90)
+        .optional(),
+      longitude: Joi.number()
+        .min(-180)
+        .max(180)
+        .optional()
+    }).optional()
+  }).required(),
+  technical: Joi.object({
+    ipAddress: Joi.string()
+      .ip()
+      .optional(),
+    port: Joi.number()
+      .min(1)
+      .max(65535)
+      .optional(),
+    protocol: Joi.string()
+      .valid('http', 'https', 'rtsp', 'rtmp', 'onvif')
+      .optional(),
+    username: Joi.string()
+      .max(50)
+      .optional(),
+    password: Joi.string()
+      .max(100)
+      .optional(),
+    streamUrl: Joi.string()
+      .max(500)
+      .optional(),
+    resolution: Joi.object({
+      width: Joi.number().min(1).optional(),
+      height: Joi.number().min(1).optional()
+    }).optional(),
+    fps: Joi.number()
+      .min(1)
+      .max(120)
+      .optional()
+  }).optional(),
+  recognition: Joi.object({
+    enabled: Joi.boolean().optional(),
+    confidence: Joi.object({
+      threshold: Joi.number().min(0).max(1).optional(),
+      autoApprove: Joi.number().min(0).max(1).optional()
+    }).optional(),
+    roi: Joi.object({
+      x: Joi.number().min(0).optional(),
+      y: Joi.number().min(0).optional(),
+      width: Joi.number().min(1).optional(),
+      height: Joi.number().min(1).optional()
+    }).optional(),
+    processingInterval: Joi.number().min(100).optional()
+  }).optional(),
+  managedBy: Joi.string().optional(),
+  manufacturer: Joi.string().max(100).optional(),
+  model: Joi.string().max(100).optional(),
+  serialNumber: Joi.string().max(100).optional(),
+  warrantyExpiry: Joi.date().optional(),
+  maintenance: Joi.object({
+    maintenanceInterval: Joi.number().min(1).optional()
+  }).optional()
+});
+
+export const updateCameraSchema = cameraSchema.fork(['cameraId', 'name', 'location'], (schema) => schema.optional());
+
 // Export validation middleware
 export const validateRegister = validate(registerSchema);
 export const validateLogin = validate(loginSchema);
@@ -215,3 +311,5 @@ export const validateUpdateVehicle = validate(updateVehicleSchema);
 export const validateAccessLog = validate(accessLogSchema);
 export const validateUpdateUser = validate(updateUserSchema);
 export const validateChangePassword = validate(changePasswordSchema);
+export const validateCamera = validate(cameraSchema);
+export const validateUpdateCamera = validate(updateCameraSchema);
