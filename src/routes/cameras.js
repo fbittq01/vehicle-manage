@@ -13,14 +13,13 @@ import {
   getCameraStatistics,
   incrementDetection
 } from '../controllers/cameraController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticateToken, authorize } from '../middleware/auth.js';
 import { validateCamera, validateUpdateCamera } from '../middleware/validation.js';
-import { rateLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
 // Áp dụng middleware xác thực cho tất cả routes
-router.use(authenticate);
+router.use(authenticateToken);
 
 // Routes chung
 router.get('/', getCameras);

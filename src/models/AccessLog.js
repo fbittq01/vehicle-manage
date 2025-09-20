@@ -164,7 +164,7 @@ accessLogSchema.statics.findByDateRange = function(startDate, endDate, additiona
       $gte: startDate,
       $lte: endDate
     }
-  }).populate('vehicle').populate('owner', 'name email').populate('verifiedBy', 'name');
+  }).populate('vehicle').populate('owner', 'name username').populate('verifiedBy', 'name');
 };
 
 // Static method tìm logs theo biển số
@@ -173,7 +173,7 @@ accessLogSchema.statics.findByLicensePlate = function(licensePlate, limit = 50) 
     .sort({ createdAt: -1 })
     .limit(limit)
     .populate('vehicle')
-    .populate('owner', 'name email')
+    .populate('owner', 'name username')
     .populate('verifiedBy', 'name');
 };
 

@@ -53,7 +53,7 @@ async function initializeDatabase() {
     console.log('🔍 Creating indexes...');
     
     // Users indexes
-    await db.collection('users').createIndex({ "email": 1 }, { unique: true });
+    await db.collection('users').createIndex({ "username": 1 }, { unique: true });
     await db.collection('users').createIndex({ "employeeId": 1 }, { sparse: true, unique: true });
     await db.collection('users').createIndex({ "role": 1 });
     await db.collection('users').createIndex({ "isActive": 1 });

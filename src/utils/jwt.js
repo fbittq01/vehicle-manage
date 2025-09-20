@@ -23,7 +23,7 @@ export const verifyRefreshToken = (token) => {
 export const generateTokens = (user) => {
   const payload = {
     userId: user._id,
-    email: user.email,
+    username: user.username,
     role: user.role
   };
 
