@@ -24,12 +24,16 @@ const validate = (schema) => {
 
 // Validation schemas
 export const registerSchema = Joi.object({
-  email: Joi.string()
-    .email()
+  username: Joi.string()
+    .alphanum()
+    .min(3)
+    .max(50)
     .required()
     .messages({
-      'string.email': 'Email không hợp lệ',
-      'any.required': 'Email là bắt buộc'
+      'string.alphanum': 'Username chỉ được chứa chữ cái và số',
+      'string.min': 'Username phải có ít nhất 3 ký tự',
+      'string.max': 'Username không được vượt quá 50 ký tự',
+      'any.required': 'Username là bắt buộc'
     }),
   password: Joi.string()
     .min(6)
@@ -67,12 +71,10 @@ export const registerSchema = Joi.object({
 });
 
 export const loginSchema = Joi.object({
-  email: Joi.string()
-    .email()
+  username: Joi.string()
     .required()
     .messages({
-      'string.email': 'Email không hợp lệ',
-      'any.required': 'Email là bắt buộc'
+      'any.required': 'Username là bắt buộc'
     }),
   password: Joi.string()
     .required()

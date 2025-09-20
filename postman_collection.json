@@ -37,7 +37,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"Password123!\",\n  \"name\": \"Nguyen Van Test\",\n  \"phone\": \"0123456789\",\n  \"department\": \"IT\"\n}"
+              "raw": "{\n  \"username\": \"test123\",\n  \"password\": \"Password123!\",\n  \"name\": \"Nguyen Van Test\",\n  \"phone\": \"0123456789\",\n  \"department\": \"IT\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/register",
@@ -58,7 +58,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"superadmin@system.com\",\n  \"password\": \"SuperAdmin123!\"\n}"
+              "raw": "{\n  \"username\": \"superadmin\",\n  \"password\": \"SuperAdmin123!\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/login",

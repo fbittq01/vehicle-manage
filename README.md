@@ -98,7 +98,7 @@ POST /api/auth/register
 Content-Type: application/json
 
 {
-  "email": "user@example.com",
+  "username": "user123",
   "password": "Password123!",
   "name": "Nguyen Van A",
   "phone": "0123456789",
@@ -113,7 +113,7 @@ POST /api/auth/login
 Content-Type: application/json
 
 {
-  "email": "user@example.com",
+  "username": "user123",
   "password": "Password123!"
 }
 ```
@@ -281,7 +281,7 @@ Khi server chạy trên port 5000:
 Khi khởi động lần đầu, hệ thống sẽ tự động tạo:
 
 - **Super Admin**: 
-  - Email: `superadmin@system.com`
+  - Username: `superadmin`
   - Password: `SuperAdmin123!`
 
 ## Scripts có sẵn
@@ -296,7 +296,7 @@ npm run test:server  # Test server without DB
 ## Database Schema
 
 ### Users
-- email, password, name, phone, role, department, employeeId
+- username, password, name, phone, role, department, employeeId
 - isActive, lastLogin, refreshTokens
 
 ### Vehicles  

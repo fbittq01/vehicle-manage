@@ -34,7 +34,7 @@ export const getVehicles = asyncHandler(async (req, res) => {
   // Execute query
   const [vehicles, total] = await Promise.all([
     Vehicle.find(filter)
-      .populate('owner', 'name email phone department')
+      .populate('owner', 'name username phone department')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -50,7 +50,7 @@ export const getVehicles = asyncHandler(async (req, res) => {
 export const getVehicleById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const vehicle = await Vehicle.findById(id).populate('owner', 'name email phone department');
+  const vehicle = await Vehicle.findById(id).populate('owner', 'name username phone department');
   
   if (!vehicle) {
     return sendErrorResponse(res, 'Không tìm thấy vehicle', 404);
@@ -77,7 +77,7 @@ export const getVehicleByLicensePlate = asyncHandler(async (req, res) => {
   const vehicle = await Vehicle.findOne({ 
     licensePlate: normalizedPlate,
     isActive: true 
-  }).populate('owner', 'name email phone department');
+  }).populate('owner', 'name username phone department');
 
   if (!vehicle) {
     return sendErrorResponse(res, 'Không tìm thấy vehicle với biển số này', 404);
@@ -135,7 +135,7 @@ export const createVehicle = asyncHandler(async (req, res) => {
   await vehicle.save();
   
   const populatedVehicle = await Vehicle.findById(vehicle._id)
-    .populate('owner', 'name email phone department');
+    .populate('owner', 'name username phone department');
 
   sendSuccessResponse(res, { vehicle: populatedVehicle }, 'Tạo vehicle thành công', 201);
 });
@@ -193,7 +193,7 @@ export const updateVehicle = asyncHandler(async (req, res) => {
     id,
     updateData,
     { new: true, runValidators: true }
-  ).populate('owner', 'name email phone department');
+  ).populate('owner', 'name username phone department');
 
   sendSuccessResponse(res, { vehicle: updatedVehicle }, 'Cập nhật vehicle thành công');
 });
@@ -237,7 +237,7 @@ export const activateVehicle = asyncHandler(async (req, res) => {
   await vehicle.save();
 
   const populatedVehicle = await Vehicle.findById(vehicle._id)
-    .populate('owner', 'name email phone department');
+    .populate('owner', 'name username phone department');
 
   sendSuccessResponse(res, { vehicle: populatedVehicle }, 'Đã kích hoạt vehicle');
 });
@@ -289,7 +289,7 @@ export const addMaintenanceRecord = asyncHandler(async (req, res) => {
   });
 
   const updatedVehicle = await Vehicle.findById(id)
-    .populate('owner', 'name email phone department');
+    .populate('owner', 'name username phone department');
 
   sendSuccessResponse(res, { vehicle: updatedVehicle }, 'Thêm lịch sử bảo trì thành công');
 });
