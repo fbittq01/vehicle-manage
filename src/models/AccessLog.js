@@ -54,6 +54,12 @@ const accessLogSchema = new mongoose.Schema({
       type: String, // Base64 hoặc URL của ảnh gốc
       required: false
     },
+    videoUrl: {
+      type: String, // URL của video 10 giây
+      required: false,
+      trim: true,
+      maxlength: [500, 'URL video không được vượt quá 500 ký tự']
+    },
     boundingBox: {
       x: Number,
       y: Number,
