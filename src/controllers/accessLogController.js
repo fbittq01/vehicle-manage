@@ -44,7 +44,7 @@ export const getAccessLogs = asyncHandler(async (req, res) => {
   // Execute query
   const [logs, total] = await Promise.all([
     AccessLog.find(filter)
-      .populate('vehicle', 'licensePlate vehicleType brand model color')
+      .populate('vehicle', 'licensePlate vehicleType name color')
       .populate('owner', 'name email phone')
       .populate('verifiedBy', 'name email')
       .sort({ createdAt: -1 })
@@ -63,7 +63,7 @@ export const getAccessLogById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const log = await AccessLog.findById(id)
-    .populate('vehicle', 'licensePlate vehicleType brand model color owner')
+    .populate('vehicle', 'licensePlate vehicleType name color owner')
     .populate('owner', 'name email phone department')
     .populate('verifiedBy', 'name email');
   
@@ -131,7 +131,7 @@ export const createAccessLog = asyncHandler(async (req, res) => {
 
   // Populate để trả về đầy đủ thông tin
   const populatedLog = await AccessLog.findById(accessLog._id)
-    .populate('vehicle', 'licensePlate vehicleType brand model color')
+    .populate('vehicle', 'licensePlate vehicleType name color')
     .populate('owner', 'name email phone')
     .populate('verifiedBy', 'name email');
 
@@ -184,7 +184,7 @@ export const verifyAccessLog = asyncHandler(async (req, res) => {
   await accessLog.save();
 
   const populatedLog = await AccessLog.findById(accessLog._id)
-    .populate('vehicle', 'licensePlate vehicleType brand model color')
+    .populate('vehicle', 'licensePlate vehicleType name color')
     .populate('owner', 'name email phone')
     .populate('verifiedBy', 'name email');
 
@@ -269,7 +269,7 @@ export const getPendingLogs = asyncHandler(async (req, res) => {
 
   const [logs, total] = await Promise.all([
     AccessLog.find({ verificationStatus: 'pending' })
-      .populate('vehicle', 'licensePlate vehicleType brand model color')
+      .populate('vehicle', 'licensePlate vehicleType name color')
       .populate('owner', 'name email phone')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -288,7 +288,7 @@ export const getVehiclesInside = asyncHandler(async (req, res) => {
 
   // Populate thông tin vehicle và owner
   const populatedVehicles = await AccessLog.populate(vehiclesInside, [
-    { path: 'vehicle', select: 'licensePlate vehicleType brand model color' },
+    { path: 'vehicle', select: 'licensePlate vehicleType name color' },
     { path: 'owner', select: 'name email phone' }
   ]);
 

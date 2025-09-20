@@ -8,8 +8,6 @@ import {
   deleteVehicle,
   activateVehicle,
   getMyVehicles,
-  addMaintenanceRecord,
-  getInsuranceExpiring,
   getVehicleStats
 } from '../controllers/vehicleController.js';
 import {
@@ -30,7 +28,6 @@ router.use(authenticateToken);
 // Public routes (authenticated users)
 router.get('/my-vehicles', getMyVehicles);
 router.get('/stats', getVehicleStats);
-router.get('/insurance-expiring', requireAdmin, getInsuranceExpiring);
 
 // CRUD routes
 router.get('/', getVehicles);
@@ -40,8 +37,5 @@ router.post('/', validateVehicle, createVehicle);
 router.put('/:id', validateUpdateVehicle, updateVehicle);
 router.delete('/:id', deleteVehicle);
 router.put('/:id/activate', activateVehicle);
-
-// Maintenance routes
-router.post('/:id/maintenance', addMaintenanceRecord);
 
 export default router;

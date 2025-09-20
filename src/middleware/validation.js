@@ -103,30 +103,17 @@ export const vehicleSchema = Joi.object({
       'any.only': 'Loại xe không hợp lệ',
       'any.required': 'Loại xe là bắt buộc'
     }),
-  brand: Joi.string()
-    .max(50)
-    .optional(),
-  model: Joi.string()
-    .max(50)
+  name: Joi.string()
+    .max(100)
     .optional(),
   color: Joi.string()
     .max(30)
-    .optional(),
-  year: Joi.number()
-    .integer()
-    .min(1900)
-    .max(new Date().getFullYear() + 1)
     .optional(),
   description: Joi.string()
     .max(500)
     .optional(),
   expiryDate: Joi.date()
-    .optional(),
-  insurance: Joi.object({
-    company: Joi.string().max(100).optional(),
-    policyNumber: Joi.string().max(50).optional(),
-    expiryDate: Joi.date().optional()
-  }).optional()
+    .optional()
 });
 
 export const updateVehicleSchema = vehicleSchema.fork(['licensePlate', 'owner', 'vehicleType'], (schema) => schema.optional());

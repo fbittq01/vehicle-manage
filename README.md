@@ -146,10 +146,9 @@ Content-Type: application/json
   "licensePlate": "29A-123.45",
   "owner": "user_id",
   "vehicleType": "car",
-  "brand": "Toyota",
-  "model": "Camry",
+  "name": "Toyota Camry",
   "color": "Đen",
-  "year": 2020
+  "description": "Xe ô tô màu đen"
 }
 ```
 
@@ -160,8 +159,8 @@ Authorization: Bearer your_access_token
 Content-Type: application/json
 
 {
-  "brand": "Honda",
-  "model": "Civic"
+  "name": "Honda Civic",
+  "color": "Xanh"
 }
 ```
 
