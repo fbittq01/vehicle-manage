@@ -114,6 +114,11 @@ const accessLogSchema = new mongoose.Schema({
     deviceName: String,
     ipAddress: String
   },
+  camera: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Camera',
+    index: true
+  },
   weather: {
     condition: String,
     temperature: Number,

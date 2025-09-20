@@ -1,4 +1,5 @@
 import { User } from '../models/index.js';
+import { initCameras } from './initCameraService.js';
 
 // Tạo super admin account khi khởi động ứng dụng
 export const createSuperAdmin = async () => {
@@ -40,6 +41,9 @@ export const initializeDatabase = async () => {
     
     // Tạo super admin
     // await createSuperAdmin();
+    
+    // Khởi tạo dữ liệu camera mẫu
+    // await initCameras();
     
     // Có thể thêm các initialization khác ở đây
     // Ví dụ: tạo default gates, vehicle types, etc.
