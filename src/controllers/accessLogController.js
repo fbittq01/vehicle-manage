@@ -83,9 +83,6 @@ export const getAccessLogById = asyncHandler(async (req, res) => {
 // Tạo access log mới (từ AI system)
 export const createAccessLog = asyncHandler(async (req, res) => {
   // Debug logging
-  console.log('Content-Type:', req.headers['content-type']);
-  console.log('req.body:', req.body);
-  console.log('req.body type:', typeof req.body);
   
   // Kiểm tra req.body tồn tại
   if (!req.body || Object.keys(req.body).length === 0) {
