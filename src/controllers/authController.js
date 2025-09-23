@@ -167,7 +167,66 @@ export const logoutAll = asyncHandler(async (req, res) => {
 
 // Lấy thông tin profile
 export const getProfile = asyncHandler(async (req, res) => {
-  sendSuccessResponse(res, { user: req.user }, 'Lấy thông tin profile thành công');
+  // Lấy thông tin user đầy đủ từ database
+  const user = await User.findById(req.user._id).select('-password -refreshTokens');
+  
+  if (!user) {
+    return sendErrorResponse(res, 'Không tìm thấy thông tin người dùng', 404);
+  }
+
+  // Thống kê hoạt động của user
+  const stats = {
+    vehiclesOwned: 0,
+    accessLogsCount: 0,
+    lastAccessDate: null
+  };
+
+  try {
+    // Import models để tránh circular dependency
+    const { Vehicle } = await import('../models/index.js');
+    const { AccessLog } = await import('../models/index.js');
+
+    // Đếm số phương tiện sở hữu
+    stats.vehiclesOwned = await Vehicle.countDocuments({ owner: user._id });
+
+    // Đếm số lần ra vào và lấy lần cuối
+    const accessLogStats = await AccessLog.aggregate([
+      { $match: { owner: user._id } },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          lastAccess: { $max: '$createdAt' }
+        }
+      }
+    ]);
+
+    if (accessLogStats.length > 0) {
+      stats.accessLogsCount = accessLogStats[0].count;
+      stats.lastAccessDate = accessLogStats[0].lastAccess;
+    }
+  } catch (error) {
+    console.warn('Không thể lấy thống kê profile:', error.message);
+  }
+
+  // Thông tin profile đầy đủ
+  const profileData = {
+    user: user.toJSON(),
+    stats,
+    permissions: {
+      canManageVehicles: ['admin', 'super_admin'].includes(user.role),
+      canManageUsers: ['admin', 'super_admin'].includes(user.role),
+      canViewAllLogs: ['admin', 'super_admin'].includes(user.role),
+      canVerifyAccess: ['admin', 'super_admin'].includes(user.role),
+      isSuperAdmin: user.role === 'super_admin'
+    },
+    session: {
+      loginTime: user.lastLogin,
+      tokenCount: user.refreshTokens?.length || 0
+    }
+  };
+
+  sendSuccessResponse(res, profileData, 'Lấy thông tin profile thành công');
 });
 
 // Cập nhật profile
