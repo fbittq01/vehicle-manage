@@ -4,6 +4,7 @@ import { getPaginationParams, createPagination } from '../utils/response.js';
 import { normalizeLicensePlate } from '../utils/licensePlate.js';
 import { asyncHandler } from '../middleware/logger.js';
 import socketService from '../socket/socketService.js';
+import { processRecognitionImages } from '../utils/fileStorage.js';
 
 // Lấy danh sách access logs
 export const getAccessLogs = asyncHandler(async (req, res) => {
@@ -81,6 +82,16 @@ export const getAccessLogById = asyncHandler(async (req, res) => {
 
 // Tạo access log mới (từ AI system)
 export const createAccessLog = asyncHandler(async (req, res) => {
+  // Debug logging
+  console.log('Content-Type:', req.headers['content-type']);
+  console.log('req.body:', req.body);
+  console.log('req.body type:', typeof req.body);
+  
+  // Kiểm tra req.body tồn tại
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return sendErrorResponse(res, 'Request body is empty or invalid', 400);
+  }
+
   const {
     licensePlate,
     action,
@@ -93,6 +104,13 @@ export const createAccessLog = asyncHandler(async (req, res) => {
 
   // Chuẩn hóa biển số
   const normalizedPlate = normalizeLicensePlate(licensePlate);
+
+  // Xử lý ảnh base64 trong recognitionData (nếu có)
+  const processedRecognitionData = await processRecognitionImages(
+    recognitionData, 
+    normalizedPlate, 
+    action
+  );
 
   // Tìm thông tin vehicle và owner
   const vehicle = await Vehicle.findOne({ 
@@ -108,7 +126,7 @@ export const createAccessLog = asyncHandler(async (req, res) => {
     action,
     gateId,
     gateName,
-    recognitionData,
+    recognitionData: processedRecognitionData,
     isVehicleRegistered: !!vehicle,
     isOwnerActive: vehicle?.owner?.isActive || false,
     deviceInfo,

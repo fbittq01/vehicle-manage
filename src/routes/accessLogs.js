@@ -23,11 +23,14 @@ import {
 import {
   recognitionLimiter
 } from '../middleware/rateLimiter.js';
+import {
+  parseAccessLogFormData
+} from '../middleware/formDataParser.js';
 
 const router = express.Router();
 
 // Public route for AI system to create logs
-router.post('/', recognitionLimiter, validateAccessLog, createAccessLog);
+router.post('/', recognitionLimiter, parseAccessLogFormData, validateAccessLog, createAccessLog);
 
 // Protected routes
 router.use(authenticateToken);
