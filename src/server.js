@@ -35,6 +35,9 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Serve static files từ uploads directory
+app.use('/uploads', express.static('uploads'));
+
 // Logging middleware
 if (process.env.NODE_ENV === 'production') {
   app.use(prodLogger);
