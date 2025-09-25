@@ -4,7 +4,9 @@ import {
   getAccessLogById,
   createAccessLog,
   verifyAccessLog,
+  updateGuestInfo,
   getLogsByLicensePlate,
+  getLogsByGuestInfo,
   getLogsByDateRange,
   getDailyStats,
   getPendingLogs,
@@ -43,10 +45,12 @@ router.get('/pending', requireAdmin, getPendingLogs);
 router.get('/vehicles-inside', getVehiclesInside);
 router.get('/date-range', getLogsByDateRange);
 router.get('/license-plate/:licensePlate', getLogsByLicensePlate);
+router.get('/guest-search', getLogsByGuestInfo);
 router.get('/:id', getAccessLogById);
 
 // Admin only routes
 router.put('/:id/verify', requireAdmin, verifyAccessLog);
+router.put('/:id/guest-info', requireAdmin, updateGuestInfo);
 router.delete('/:id', requireAdmin, deleteAccessLog);
 
 export default router;

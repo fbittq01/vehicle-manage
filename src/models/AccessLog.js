@@ -127,6 +127,44 @@ const accessLogSchema = new mongoose.Schema({
   duration: {
     type: Number, // Thời gian lưu trú (phút) - chỉ có khi exit
     min: 0
+  },
+  // Thông tin khách (cho xe chưa đăng ký)
+  guestInfo: {
+    name: {
+      type: String,
+      trim: true,
+      maxlength: [100, 'Tên khách không được vượt quá 100 ký tự']
+    },
+    phone: {
+      type: String,
+      trim: true,
+      maxlength: [20, 'Số điện thoại không được vượt quá 20 ký tự']
+    },
+    idCard: {
+      type: String,
+      trim: true,
+      maxlength: [20, 'Số CMND/CCCD không được vượt quá 20 ký tự']
+    },
+    hometown: {
+      type: String,
+      trim: true,
+      maxlength: [200, 'Quê quán không được vượt quá 200 ký tự']
+    },
+    visitPurpose: {
+      type: String,
+      trim: true,
+      maxlength: [300, 'Mục đích thăm viếng không được vượt quá 300 ký tự']
+    },
+    contactPerson: {
+      type: String,
+      trim: true,
+      maxlength: [100, 'Người liên hệ không được vượt quá 100 ký tự']
+    },
+    notes: {
+      type: String,
+      trim: true,
+      maxlength: [500, 'Ghi chú không được vượt quá 500 ký tự']
+    }
   }
 }, {
   timestamps: true
@@ -175,6 +213,24 @@ accessLogSchema.statics.findByLicensePlate = function(licensePlate, limit = 50) 
     .populate('vehicle')
     .populate('owner', 'name username')
     .populate('verifiedBy', 'name');
+};
+
+// Static method tìm logs theo thông tin khách
+accessLogSchema.statics.findByGuestInfo = function(searchQuery, limit = 50) {
+  const query = {
+    isVehicleRegistered: false,
+    $or: [
+      { 'guestInfo.name': { $regex: searchQuery, $options: 'i' } },
+      { 'guestInfo.phone': { $regex: searchQuery, $options: 'i' } },
+      { 'guestInfo.idCard': { $regex: searchQuery, $options: 'i' } },
+      { 'guestInfo.hometown': { $regex: searchQuery, $options: 'i' } }
+    ]
+  };
+
+  return this.find(query)
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .populate('verifiedBy', 'name username');
 };
 
 // Static method lấy thống kê theo ngày

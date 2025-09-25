@@ -3,7 +3,6 @@ import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '.
 import { getPaginationParams, createPagination } from '../utils/response.js';
 import { normalizeLicensePlate } from '../utils/licensePlate.js';
 import { asyncHandler } from '../middleware/logger.js';
-import socketService from '../socket/socketService.js';
 import { processRecognitionImages } from '../utils/fileStorage.js';
 
 // Lấy danh sách access logs
@@ -80,15 +79,8 @@ export const getAccessLogById = asyncHandler(async (req, res) => {
   sendSuccessResponse(res, { log }, 'Lấy thông tin access log thành công');
 });
 
-// Tạo access log mới (từ AI system)
-export const createAccessLog = asyncHandler(async (req, res) => {
-  // Debug logging
-  
-  // Kiểm tra req.body tồn tại
-  if (!req.body || Object.keys(req.body).length === 0) {
-    return sendErrorResponse(res, 'Request body is empty or invalid', 400);
-  }
-
+// Core business logic for creating access log (reusable)
+export const createAccessLogLogic = async (logData) => {
   const {
     licensePlate,
     action,
@@ -97,7 +89,7 @@ export const createAccessLog = asyncHandler(async (req, res) => {
     recognitionData,
     deviceInfo,
     weather
-  } = req.body;
+  } = logData;
 
   // Chuẩn hóa biển số
   const normalizedPlate = normalizeLicensePlate(licensePlate);
@@ -150,33 +142,25 @@ export const createAccessLog = asyncHandler(async (req, res) => {
     .populate('owner', 'name username phone')
     .populate('verifiedBy', 'name username');
 
-  // Broadcast qua socket
-  const responseData = {
-    accessLog: populatedLog,
-    vehicle,
-    needsManualVerification: accessLog.verificationStatus === 'pending'
-  };
+  return { populatedLog, vehicle };
+};
 
-  // Gửi tới specific gate
-  socketService.sendToRoom(`gate_${gateId}`, 'vehicle_detected', responseData);
+// Tạo access log mới (từ AI system) - HTTP endpoint
+export const createAccessLog = asyncHandler(async (req, res) => {
+  // Kiểm tra req.body tồn tại
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return sendErrorResponse(res, 'Request body is empty or invalid', 400);
+  }
+
+  const result = await createAccessLogLogic(req.body);
   
-  // Gửi tới vehicle owner nếu có
-  if (vehicle) {
-    socketService.sendToRoom(`vehicle_${vehicle._id}`, 'vehicle_activity', responseData);
-  }
-
-  // Gửi tới admin nếu cần manual verification
-  if (accessLog.verificationStatus === 'pending') {
-    socketService.broadcast('manual_verification_needed', responseData);
-  }
-
-  sendSuccessResponse(res, { log: populatedLog }, 'Tạo access log thành công', 201);
+  sendSuccessResponse(res, { log: result.populatedLog }, 'Tạo access log thành công', 201);
 });
 
 // Verify access log (admin only)
 export const verifyAccessLog = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { status, note } = req.body;
+  const { status, note, guestInfo } = req.body;
 
   if (!['approved', 'rejected'].includes(status)) {
     return sendErrorResponse(res, 'Trạng thái verify không hợp lệ', 400);
@@ -196,6 +180,24 @@ export const verifyAccessLog = asyncHandler(async (req, res) => {
   accessLog.verificationTime = new Date();
   accessLog.verificationNote = note;
 
+  // Thêm thông tin khách nếu xe chưa đăng ký và được approve
+  if (status === 'approved' && !accessLog.isVehicleRegistered && guestInfo) {
+    // Validate thông tin khách cơ bản
+    if (!guestInfo.name || !guestInfo.phone) {
+      return sendErrorResponse(res, 'Tên và số điện thoại khách là bắt buộc', 400);
+    }
+
+    accessLog.guestInfo = {
+      name: guestInfo.name,
+      phone: guestInfo.phone,
+      idCard: guestInfo.idCard,
+      hometown: guestInfo.hometown,
+      visitPurpose: guestInfo.visitPurpose,
+      contactPerson: guestInfo.contactPerson,
+      notes: guestInfo.notes
+    };
+  }
+
   await accessLog.save();
 
   const populatedLog = await AccessLog.findById(accessLog._id)
@@ -204,12 +206,71 @@ export const verifyAccessLog = asyncHandler(async (req, res) => {
     .populate('verifiedBy', 'name username');
 
   // Broadcast verification result
+  // Sử dụng dynamic import để tránh circular dependency
+  const { default: socketService } = await import('../socket/socketService.js');
   socketService.broadcast('verification_completed', {
     accessLog: populatedLog,
     verifiedBy: req.user
   });
 
   sendSuccessResponse(res, { log: populatedLog }, 'Verify access log thành công');
+});
+
+// Cập nhật thông tin khách cho access log (admin only)
+export const updateGuestInfo = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { guestInfo } = req.body;
+
+  const accessLog = await AccessLog.findById(id);
+  if (!accessLog) {
+    return sendErrorResponse(res, 'Không tìm thấy access log', 404);
+  }
+
+  // Chỉ cho phép cập nhật thông tin khách cho xe chưa đăng ký
+  if (accessLog.isVehicleRegistered) {
+    return sendErrorResponse(res, 'Không thể cập nhật thông tin khách cho xe đã đăng ký', 400);
+  }
+
+  // Validate thông tin khách cơ bản
+  if (!guestInfo || !guestInfo.name || !guestInfo.phone) {
+    return sendErrorResponse(res, 'Tên và số điện thoại khách là bắt buộc', 400);
+  }
+
+  accessLog.guestInfo = {
+    name: guestInfo.name,
+    phone: guestInfo.phone,
+    idCard: guestInfo.idCard,
+    hometown: guestInfo.hometown,
+    visitPurpose: guestInfo.visitPurpose,
+    contactPerson: guestInfo.contactPerson,
+    notes: guestInfo.notes
+  };
+
+  await accessLog.save();
+
+  const populatedLog = await AccessLog.findById(accessLog._id)
+    .populate('vehicle', 'licensePlate vehicleType name color')
+    .populate('owner', 'name username phone')
+    .populate('verifiedBy', 'name username');
+
+  sendSuccessResponse(res, { log: populatedLog }, 'Cập nhật thông tin khách thành công');
+});
+
+// Tìm kiếm logs theo thông tin khách
+export const getLogsByGuestInfo = asyncHandler(async (req, res) => {
+  const { search } = req.query;
+  const { limit = 50 } = req.query;
+
+  if (!search || search.trim().length < 2) {
+    return sendErrorResponse(res, 'Từ khóa tìm kiếm phải có ít nhất 2 ký tự', 400);
+  }
+
+  const logs = await AccessLog.findByGuestInfo(search.trim(), parseInt(limit));
+
+  sendSuccessResponse(res, { 
+    logs, 
+    count: logs.length 
+  }, `Tìm kiếm logs theo thông tin khách: "${search}"`);
 });
 
 // Lấy logs theo biển số
@@ -379,6 +440,9 @@ export const getReports = asyncHandler(async (req, res) => {
         },
         rejected: {
           $sum: { $cond: [{ $eq: ['$verificationStatus', 'rejected'] }, 1, 0] }
+        },
+        guestEntries: {
+          $sum: { $cond: [{ $and: [{ $eq: ['$isVehicleRegistered', false] }, { $ne: ['$guestInfo', null] }] }, 1, 0] }
         }
       }
     },
@@ -393,9 +457,16 @@ export const getReports = asyncHandler(async (req, res) => {
         autoApproved: 1,
         manuallyApproved: 1,
         rejected: 1,
+        guestEntries: 1,
         approvalRate: {
           $round: [
             { $divide: [{ $add: ['$autoApproved', '$manuallyApproved'] }, '$count'] },
+            3
+          ]
+        },
+        guestRate: {
+          $round: [
+            { $divide: ['$guestEntries', '$count'] },
             3
           ]
         }

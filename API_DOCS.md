@@ -156,6 +156,45 @@ Verify access log (Admin only)
 ```json
 {
   "status": "approved",
+  "note": "Xác nhận chính xác",
+  "guestInfo": {
+    "name": "Nguyễn Văn Khách",
+    "phone": "0987654321",
+    "idCard": "123456789012",
+    "hometown": "Hà Nội",
+    "visitPurpose": "Thăm viếng khách hàng",
+    "contactPerson": "Trần Thị B",
+    "notes": "Ghi chú bổ sung"
+  }
+}
+```
+
+#### PUT /access-logs/:id/guest-info
+Cập nhật thông tin khách (Admin only)
+
+```json
+{
+  "guestInfo": {
+    "name": "Nguyễn Văn Khách",
+    "phone": "0987654321",
+    "hometown": "Thành phố Hồ Chí Minh",
+    "visitPurpose": "Họp hành",
+    "contactPerson": "Phạm Văn C"
+  }
+}
+```
+
+#### GET /access-logs/guest-search
+Tìm kiếm theo thông tin khách
+- Query params: `search` (bắt buộc), `limit`
+- Example: `/access-logs/guest-search?search=Nguyễn Văn&limit=20`
+
+#### PUT /access-logs/:id/verify
+Verify access log (Admin only)
+
+```json
+{
+  "status": "approved",
   "note": "Xác nhận chính xác"
 }
 ```
