@@ -2,6 +2,8 @@ import { Server } from 'socket.io';
 import { createServer } from 'http';
 import { AccessLog, Vehicle, User } from '../models/index.js';
 import { normalizeLicensePlate, validateVietnameseLicensePlate } from '../utils/licensePlate.js';
+import { processRecognitionImages } from '../utils/fileStorage.js';
+import { createAccessLogLogic } from '../controllers/accessLogController.js';
 
 class SocketService {
   constructor() {
@@ -207,66 +209,40 @@ class SocketService {
         return;
       }
 
-      // Tìm thông tin vehicle và owner
-      const vehicle = await Vehicle.findOne({ 
-        licensePlate: normalizedPlate, 
-        isActive: true 
-      }).populate('owner');
+      // Chuẩn bị dữ liệu recognition
+      const recognitionData = {
+        confidence,
+        processedImage,
+        originalImage,
+        boundingBox,
+        processingTime
+      };
 
-      // Tạo access log
-      const accessLog = new AccessLog({
-        licensePlate: normalizedPlate,
-        vehicle: vehicle?._id,
-        owner: vehicle?.owner?._id,
+      // Chuẩn bị dữ liệu cho createAccessLogLogic
+      const logData = {
+        licensePlate,
         action,
         gateId,
         gateName,
-        recognitionData: {
-          confidence,
-          processedImage,
-          originalImage,
-          boundingBox,
-          processingTime
-        },
-        isVehicleRegistered: !!vehicle,
-        isOwnerActive: vehicle?.owner?.isActive || false,
+        recognitionData,
         deviceInfo
-      });
+      };
 
-      // Auto-approve nếu confidence cao và vehicle đã đăng ký
-      if (confidence >= 0.9 && vehicle && vehicle.owner.isActive) {
-        accessLog.verificationStatus = 'auto_approved';
-        accessLog.verificationTime = new Date();
-        accessLog.verificationNote = `Auto-approved với confidence ${confidence}`;
-      }
-
-      // Tính duration nếu là exit
-      if (action === 'exit') {
-        await accessLog.calculateDuration();
-      }
-
-      await accessLog.save();
+      // Sử dụng logic từ controller để tạo access log
+      const { populatedLog, vehicle } = await createAccessLogLogic(logData);
 
       // Broadcast tới clients
       const responseData = {
-        accessLog: await AccessLog.findById(accessLog._id)
-          .populate('vehicle')
-          .populate('owner', 'name username')
-          .populate('verifiedBy', 'name'),
+        accessLog: populatedLog,
         vehicle,
-        needsManualVerification: accessLog.verificationStatus === 'pending'
+        needsManualVerification: populatedLog.verificationStatus === 'pending'
       };
 
       // Gửi tới specific gate
       this.io.to(`gate_${gateId}`).emit('vehicle_detected', responseData);
-      
-      // Gửi tới vehicle owner nếu có
-      if (vehicle) {
-        this.io.to(`vehicle_${vehicle._id}`).emit('vehicle_activity', responseData);
-      }
 
       // Gửi tới admin nếu cần manual verification
-      if (accessLog.verificationStatus === 'pending') {
+      if (populatedLog.verificationStatus === 'pending') {
         this.io.emit('manual_verification_needed', responseData);
       }
 
