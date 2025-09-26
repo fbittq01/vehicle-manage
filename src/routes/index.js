@@ -5,6 +5,7 @@ import vehicleRoutes from './vehicles.js';
 import accessLogRoutes from './accessLogs.js';
 import cameraRoutes from './cameras.js';
 import workingHoursRoutes from './workingHours.js';
+import departmentRoutes from './departments.js';
 // import simulationRoutes from './simulation.js';
 
 const router = express.Router();
@@ -27,6 +28,7 @@ router.use('/vehicles', vehicleRoutes);
 router.use('/access-logs', accessLogRoutes);
 router.use('/cameras', cameraRoutes);
 router.use('/working-hours', workingHoursRoutes);
+router.use('/departments', departmentRoutes);
 // router.use('/simulation', simulationRoutes);
 
 export default router;

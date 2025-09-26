@@ -86,6 +86,30 @@ export const requireSuperAdmin = authorize('super_admin');
 // Middleware kiểm tra quyền admin trở lên
 export const requireAdmin = authorize('super_admin', 'admin');
 
+// Middleware kiểm tra role cụ thể
+export const requireRole = (roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Chưa xác thực'
+      });
+    }
+
+    // Chuyển đổi roles thành array nếu là string
+    const allowedRoles = Array.isArray(roles) ? roles : [roles];
+
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Không có quyền truy cập'
+      });
+    }
+
+    next();
+  };
+};
+
 // Middleware kiểm tra người dùng có thể truy cập resource của chính họ
 export const requireOwnershipOrAdmin = (resourceOwnerField = 'owner') => {
   return (req, res, next) => {
