@@ -1,4 +1,4 @@
-import { AccessLog, Vehicle, User } from '../models/index.js';
+import { AccessLog, Vehicle, User, WorkingHours } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '../utils/response.js';
 import { getPaginationParams, createPagination } from '../utils/response.js';
 import { normalizeLicensePlate } from '../utils/licensePlate.js';
@@ -476,4 +476,430 @@ export const getReports = asyncHandler(async (req, res) => {
   ]);
 
   sendSuccessResponse(res, { reports }, 'Lấy báo cáo thành công');
+});
+
+// Lấy thống kê giờ hành chính
+export const getWorkingHoursStats = asyncHandler(async (req, res) => {
+  const {
+    startDate,
+    endDate,
+    userId,
+    licensePlate,
+    groupBy = 'day' // day, week, month
+  } = req.query;
+
+  if (!startDate || !endDate) {
+    return sendErrorResponse(res, 'Vui lòng cung cấp thời gian bắt đầu và thời gian kết thúc', 400);
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  if (start >= end) {
+    return sendErrorResponse(res, 'Thời gian bắt đầu phải nhỏ hơn thời gian kết thúc', 400);
+  }
+
+  // Lấy cài đặt giờ làm việc active
+  const workingHours = await WorkingHours.getActiveWorkingHours();
+  if (!workingHours) {
+    return sendErrorResponse(res, 'Chưa có cài đặt giờ làm việc nào được kích hoạt', 404);
+  }
+
+  // Build filter
+  const filter = {
+    createdAt: { $gte: start, $lte: end }
+  };
+
+  if (userId) {
+    filter.owner = userId;
+  }
+
+  if (licensePlate) {
+    filter.licensePlate = normalizeLicensePlate(licensePlate);
+  }
+
+  // Nếu user thường, chỉ xem thống kê của mình
+  if (req.user.role === 'user') {
+    filter.owner = req.user._id;
+  }
+
+  // Lấy các access logs
+  const logs = await AccessLog.find(filter)
+    .populate('owner', 'name username employeeId department')
+    .populate('vehicle', 'licensePlate name')
+    .sort({ createdAt: 1 });
+
+  // Phân tích từng log
+  const analysisResults = [];
+  const dailyStats = {};
+
+  logs.forEach(log => {
+    const analysis = {
+      logId: log._id,
+      licensePlate: log.licensePlate,
+      owner: log.owner,
+      vehicle: log.vehicle,
+      action: log.action,
+      createdAt: log.createdAt,
+      dayOfWeek: log.createdAt.getDay(),
+      timeStr: log.createdAt.toTimeString().substring(0, 5)
+    };
+
+    // Kiểm tra có phải ngày làm việc không
+    const workingTimeCheck = workingHours.isWorkingTime(log.createdAt);
+    analysis.workingTimeCheck = workingTimeCheck;
+
+    if (log.action === 'entry') {
+      const lateCheck = workingHours.isLate(log.createdAt);
+      analysis.lateCheck = lateCheck;
+      analysis.status = lateCheck.isLate ? 'late' : 'ontime';
+    } else if (log.action === 'exit') {
+      const earlyCheck = workingHours.isEarly(log.createdAt);
+      analysis.earlyCheck = earlyCheck;
+      analysis.status = earlyCheck.isEarly ? 'early' : 'ontime';
+    }
+
+    analysisResults.push(analysis);
+
+    // Tổng hợp thống kê theo ngày
+    const dateKey = log.createdAt.toISOString().split('T')[0];
+    if (!dailyStats[dateKey]) {
+      dailyStats[dateKey] = {
+        date: dateKey,
+        totalLogs: 0,
+        entries: { total: 0, ontime: 0, late: 0 },
+        exits: { total: 0, ontime: 0, early: 0 },
+        uniqueVehicles: new Set()
+      };
+    }
+
+    dailyStats[dateKey].totalLogs++;
+    dailyStats[dateKey].uniqueVehicles.add(log.licensePlate);
+
+    if (log.action === 'entry') {
+      dailyStats[dateKey].entries.total++;
+      if (analysis.status === 'late') {
+        dailyStats[dateKey].entries.late++;
+      } else {
+        dailyStats[dateKey].entries.ontime++;
+      }
+    } else if (log.action === 'exit') {
+      dailyStats[dateKey].exits.total++;
+      if (analysis.status === 'early') {
+        dailyStats[dateKey].exits.early++;
+      } else {
+        dailyStats[dateKey].exits.ontime++;
+      }
+    }
+  });
+
+  // Convert Set to count
+  Object.values(dailyStats).forEach(stat => {
+    stat.uniqueVehiclesCount = stat.uniqueVehicles.size;
+    delete stat.uniqueVehicles;
+  });
+
+  // Tính toán summary
+  const summary = {
+    totalLogs: logs.length,
+    dateRange: { start: startDate, end: endDate },
+    workingHoursConfig: {
+      name: workingHours.name,
+      startTime: workingHours.startTime,
+      endTime: workingHours.endTime,
+      workingDays: workingHours.workingDays,
+      lateToleranceMinutes: workingHours.lateToleranceMinutes,
+      earlyToleranceMinutes: workingHours.earlyToleranceMinutes
+    },
+    entries: {
+      total: analysisResults.filter(r => r.action === 'entry').length,
+      ontime: analysisResults.filter(r => r.action === 'entry' && r.status === 'ontime').length,
+      late: analysisResults.filter(r => r.action === 'entry' && r.status === 'late').length
+    },
+    exits: {
+      total: analysisResults.filter(r => r.action === 'exit').length,
+      ontime: analysisResults.filter(r => r.action === 'exit' && r.status === 'ontime').length,
+      early: analysisResults.filter(r => r.action === 'exit' && r.status === 'early').length
+    }
+  };
+
+  // Tính tỷ lệ
+  if (summary.entries.total > 0) {
+    summary.entries.ontimeRate = Math.round((summary.entries.ontime / summary.entries.total) * 100);
+    summary.entries.lateRate = Math.round((summary.entries.late / summary.entries.total) * 100);
+  }
+
+  if (summary.exits.total > 0) {
+    summary.exits.ontimeRate = Math.round((summary.exits.ontime / summary.exits.total) * 100);
+    summary.exits.earlyRate = Math.round((summary.exits.early / summary.exits.total) * 100);
+  }
+
+  sendSuccessResponse(res, {
+    summary,
+    dailyStats: Object.values(dailyStats).sort((a, b) => a.date.localeCompare(b.date)),
+    detailedAnalysis: analysisResults
+  }, 'Lấy thống kê giờ hành chính thành công');
+});
+
+// Lấy top nhân viên đi muộn/về sớm
+export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
+  const {
+    startDate,
+    endDate,
+    violationType = 'both', // 'late', 'early', 'both'
+    limit = 10
+  } = req.query;
+
+  if (!startDate || !endDate) {
+    return sendErrorResponse(res, 'Vui lòng cung cấp thời gian bắt đầu và thời gian kết thúc', 400);
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  // Lấy cài đặt giờ làm việc active
+  const workingHours = await WorkingHours.getActiveWorkingHours();
+  if (!workingHours) {
+    return sendErrorResponse(res, 'Chưa có cài đặt giờ làm việc nào được kích hoạt', 404);
+  }
+
+  const filter = {
+    createdAt: { $gte: start, $lte: end },
+    owner: { $exists: true }
+  };
+
+  // Nếu user thường, chỉ xem vi phạm của mình
+  if (req.user.role === 'user') {
+    filter.owner = req.user._id;
+  }
+
+  const logs = await AccessLog.find(filter)
+    .populate('owner', 'name username employeeId department')
+    .populate('vehicle', 'licensePlate name')
+    .sort({ createdAt: 1 });
+
+  // Phân tích vi phạm theo user
+  const userViolations = {};
+
+  logs.forEach(log => {
+    if (!log.owner) return;
+
+    const userId = log.owner._id.toString();
+    if (!userViolations[userId]) {
+      userViolations[userId] = {
+        user: log.owner,
+        lateEntries: [],
+        earlyExits: [],
+        totalViolations: 0
+      };
+    }
+
+    if (log.action === 'entry') {
+      const lateCheck = workingHours.isLate(log.createdAt);
+      if (lateCheck.isLate) {
+        userViolations[userId].lateEntries.push({
+          date: log.createdAt.toISOString().split('T')[0],
+          time: log.createdAt.toTimeString().substring(0, 5),
+          lateMinutes: lateCheck.lateMinutes,
+          licensePlate: log.licensePlate
+        });
+        userViolations[userId].totalViolations++;
+      }
+    } else if (log.action === 'exit') {
+      const earlyCheck = workingHours.isEarly(log.createdAt);
+      if (earlyCheck.isEarly) {
+        userViolations[userId].earlyExits.push({
+          date: log.createdAt.toISOString().split('T')[0],
+          time: log.createdAt.toTimeString().substring(0, 5),
+          earlyMinutes: earlyCheck.earlyMinutes,
+          licensePlate: log.licensePlate
+        });
+        userViolations[userId].totalViolations++;
+      }
+    }
+  });
+
+  // Lọc và sắp xếp theo loại vi phạm
+  let filteredUsers = Object.values(userViolations).filter(user => {
+    if (violationType === 'late') {
+      return user.lateEntries.length > 0;
+    } else if (violationType === 'early') {
+      return user.earlyExits.length > 0;
+    }
+    return user.totalViolations > 0;
+  });
+
+  // Sắp xếp theo số lần vi phạm giảm dần
+  filteredUsers.sort((a, b) => b.totalViolations - a.totalViolations);
+
+  // Giới hạn kết quả
+  filteredUsers = filteredUsers.slice(0, parseInt(limit));
+
+  // Tính thống kê tổng quan
+  const summary = {
+    dateRange: { start: startDate, end: endDate },
+    violationType,
+    workingHoursConfig: {
+      name: workingHours.name,
+      startTime: workingHours.startTime,
+      endTime: workingHours.endTime,
+      lateToleranceMinutes: workingHours.lateToleranceMinutes,
+      earlyToleranceMinutes: workingHours.earlyToleranceMinutes
+    },
+    totalUsersWithViolations: filteredUsers.length,
+    totalLateEntries: filteredUsers.reduce((sum, user) => sum + user.lateEntries.length, 0),
+    totalEarlyExits: filteredUsers.reduce((sum, user) => sum + user.earlyExits.length, 0),
+    totalViolations: filteredUsers.reduce((sum, user) => sum + user.totalViolations, 0)
+  };
+
+  sendSuccessResponse(res, {
+    summary,
+    violations: filteredUsers
+  }, 'Lấy danh sách vi phạm giờ hành chính thành công');
+});
+
+// Lấy báo cáo chi tiết theo nhân viên
+export const getUserWorkingHoursReport = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { startDate, endDate } = req.query;
+
+  if (!startDate || !endDate) {
+    return sendErrorResponse(res, 'Vui lòng cung cấp thời gian bắt đầu và thời gian kết thúc', 400);
+  }
+
+  // Kiểm tra quyền xem báo cáo
+  if (req.user.role === 'user' && req.user._id.toString() !== userId) {
+    return sendErrorResponse(res, 'Không có quyền xem báo cáo của người khác', 403);
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  // Lấy thông tin user
+  const user = await User.findById(userId);
+  if (!user) {
+    return sendErrorResponse(res, 'Không tìm thấy người dùng', 404);
+  }
+
+  // Lấy cài đặt giờ làm việc active
+  const workingHours = await WorkingHours.getActiveWorkingHours();
+  if (!workingHours) {
+    return sendErrorResponse(res, 'Chưa có cài đặt giờ làm việc nào được kích hoạt', 404);
+  }
+
+  // Lấy access logs của user
+  const logs = await AccessLog.find({
+    owner: userId,
+    createdAt: { $gte: start, $lte: end }
+  })
+    .populate('vehicle', 'licensePlate name')
+    .sort({ createdAt: 1 });
+
+  // Phân tích theo ngày
+  const dailyReport = {};
+
+  logs.forEach(log => {
+    const dateKey = log.createdAt.toISOString().split('T')[0];
+    
+    if (!dailyReport[dateKey]) {
+      dailyReport[dateKey] = {
+        date: dateKey,
+        dayOfWeek: log.createdAt.getDay(),
+        isWorkingDay: workingHours.workingDays.includes(log.createdAt.getDay()),
+        entries: [],
+        exits: [],
+        violations: []
+      };
+    }
+
+    const timeStr = log.createdAt.toTimeString().substring(0, 5);
+
+    if (log.action === 'entry') {
+      const lateCheck = workingHours.isLate(log.createdAt);
+      const entry = {
+        time: timeStr,
+        licensePlate: log.licensePlate,
+        vehicle: log.vehicle,
+        isLate: lateCheck.isLate,
+        lateMinutes: lateCheck.lateMinutes || 0
+      };
+      dailyReport[dateKey].entries.push(entry);
+
+      if (lateCheck.isLate) {
+        dailyReport[dateKey].violations.push({
+          type: 'late_entry',
+          time: timeStr,
+          minutes: lateCheck.lateMinutes,
+          licensePlate: log.licensePlate
+        });
+      }
+    } else if (log.action === 'exit') {
+      const earlyCheck = workingHours.isEarly(log.createdAt);
+      const exit = {
+        time: timeStr,
+        licensePlate: log.licensePlate,
+        vehicle: log.vehicle,
+        isEarly: earlyCheck.isEarly,
+        earlyMinutes: earlyCheck.earlyMinutes || 0
+      };
+      dailyReport[dateKey].exits.push(exit);
+
+      if (earlyCheck.isEarly) {
+        dailyReport[dateKey].violations.push({
+          type: 'early_exit',
+          time: timeStr,
+          minutes: earlyCheck.earlyMinutes,
+          licensePlate: log.licensePlate
+        });
+      }
+    }
+  });
+
+  // Tính thống kê tổng
+  const sortedDays = Object.values(dailyReport).sort((a, b) => a.date.localeCompare(b.date));
+  
+  const summary = {
+    user: {
+      name: user.name,
+      username: user.username,
+      employeeId: user.employeeId,
+      department: user.department
+    },
+    dateRange: { start: startDate, end: endDate },
+    workingHoursConfig: {
+      name: workingHours.name,
+      startTime: workingHours.startTime,
+      endTime: workingHours.endTime,
+      workingDays: workingHours.workingDays,
+      lateToleranceMinutes: workingHours.lateToleranceMinutes,
+      earlyToleranceMinutes: workingHours.earlyToleranceMinutes
+    },
+    statistics: {
+      totalDays: sortedDays.length,
+      workingDays: sortedDays.filter(day => day.isWorkingDay).length,
+      totalEntries: sortedDays.reduce((sum, day) => sum + day.entries.length, 0),
+      totalExits: sortedDays.reduce((sum, day) => sum + day.exits.length, 0),
+      lateEntries: sortedDays.reduce((sum, day) => sum + day.entries.filter(e => e.isLate).length, 0),
+      earlyExits: sortedDays.reduce((sum, day) => sum + day.exits.filter(e => e.isEarly).length, 0),
+      totalViolations: sortedDays.reduce((sum, day) => sum + day.violations.length, 0)
+    }
+  };
+
+  // Tính tỷ lệ
+  if (summary.statistics.totalEntries > 0) {
+    summary.statistics.ontimeEntryRate = Math.round(
+      ((summary.statistics.totalEntries - summary.statistics.lateEntries) / summary.statistics.totalEntries) * 100
+    );
+  }
+
+  if (summary.statistics.totalExits > 0) {
+    summary.statistics.ontimeExitRate = Math.round(
+      ((summary.statistics.totalExits - summary.statistics.earlyExits) / summary.statistics.totalExits) * 100
+    );
+  }
+
+  sendSuccessResponse(res, {
+    summary,
+    dailyReport: sortedDays
+  }, `Lấy báo cáo giờ hành chính của ${user.name} thành công`);
 });

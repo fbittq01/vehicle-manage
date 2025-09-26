@@ -12,7 +12,10 @@ import {
   getPendingLogs,
   getVehiclesInside,
   deleteAccessLog,
-  getReports
+  getReports,
+  getWorkingHoursStats,
+  getWorkingHoursViolations,
+  getUserWorkingHoursReport
 } from '../controllers/accessLogController.js';
 import {
   authenticateToken,
@@ -40,12 +43,15 @@ router.use(authenticateToken);
 // General routes
 router.get('/', getAccessLogs);
 router.get('/stats/daily', getDailyStats);
+router.get('/stats/working-hours', getWorkingHoursStats);
+router.get('/stats/violations', getWorkingHoursViolations);
 router.get('/reports', requireAdmin, getReports);
 router.get('/pending', requireAdmin, getPendingLogs);
 router.get('/vehicles-inside', getVehiclesInside);
 router.get('/date-range', getLogsByDateRange);
 router.get('/license-plate/:licensePlate', getLogsByLicensePlate);
 router.get('/guest-search', getLogsByGuestInfo);
+router.get('/user/:userId/working-hours-report', getUserWorkingHoursReport);
 router.get('/:id', getAccessLogById);
 
 // Admin only routes
