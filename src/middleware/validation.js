@@ -303,6 +303,272 @@ export const cameraSchema = Joi.object({
 
 export const updateCameraSchema = cameraSchema.fork(['cameraId', 'name', 'location'], (schema) => schema.optional());
 
+// Working Hours validation schemas
+export const workingHoursSchema = Joi.object({
+  name: Joi.string()
+    .min(1)
+    .max(100)
+    .trim()
+    .required()
+    .messages({
+      'string.min': 'Tên cài đặt không được để trống',
+      'string.max': 'Tên cài đặt không được vượt quá 100 ký tự',
+      'any.required': 'Tên cài đặt là bắt buộc'
+    }),
+  startTime: Joi.string()
+    .pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+    .required()
+    .messages({
+      'string.pattern.base': 'Giờ bắt đầu phải có định dạng HH:mm (ví dụ: 08:00)',
+      'any.required': 'Giờ bắt đầu là bắt buộc'
+    }),
+  endTime: Joi.string()
+    .pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+    .required()
+    .messages({
+      'string.pattern.base': 'Giờ kết thúc phải có định dạng HH:mm (ví dụ: 17:00)',
+      'any.required': 'Giờ kết thúc là bắt buộc'
+    }),
+  workingDays: Joi.array()
+    .items(Joi.number().integer().min(0).max(6))
+    .min(1)
+    .max(7)
+    .unique()
+    .required()
+    .messages({
+      'array.min': 'Phải có ít nhất 1 ngày làm việc',
+      'array.max': 'Không thể có quá 7 ngày làm việc',
+      'array.unique': 'Các ngày làm việc không được trùng lặp',
+      'number.min': 'Ngày làm việc phải từ 0 (Chủ nhật) đến 6 (Thứ 7)',
+      'number.max': 'Ngày làm việc phải từ 0 (Chủ nhật) đến 6 (Thứ 7)',
+      'any.required': 'Ngày làm việc là bắt buộc'
+    }),
+  lateToleranceMinutes: Joi.number()
+    .integer()
+    .min(0)
+    .max(120)
+    .default(30)
+    .optional()
+    .messages({
+      'number.min': 'Thời gian cho phép muộn không thể âm',
+      'number.max': 'Thời gian cho phép muộn không được vượt quá 120 phút',
+      'number.integer': 'Thời gian cho phép muộn phải là số nguyên'
+    }),
+  earlyToleranceMinutes: Joi.number()
+    .integer()
+    .min(0)
+    .max(120)
+    .default(30)
+    .optional()
+    .messages({
+      'number.min': 'Thời gian cho phép về sớm không thể âm',
+      'number.max': 'Thời gian cho phép về sớm không được vượt quá 120 phút',
+      'number.integer': 'Thời gian cho phép về sớm phải là số nguyên'
+    }),
+  description: Joi.string()
+    .max(500)
+    .trim()
+    .optional()
+    .messages({
+      'string.max': 'Mô tả không được vượt quá 500 ký tự'
+    }),
+  isActive: Joi.boolean()
+    .optional()
+    .messages({
+      'boolean.base': 'Trạng thái hoạt động phải là true hoặc false'
+    })
+}).custom((value, helpers) => {
+  // Custom validation: startTime phải nhỏ hơn endTime
+  if (value.startTime && value.endTime && value.startTime >= value.endTime) {
+    return helpers.error('custom.timeRange');
+  }
+  return value;
+}).messages({
+  'custom.timeRange': 'Giờ bắt đầu phải nhỏ hơn giờ kết thúc'
+});
+
+export const updateWorkingHoursSchema = workingHoursSchema.fork(['name', 'startTime', 'endTime', 'workingDays'], (schema) => schema.optional());
+
+// Validation cho query parameter check working time
+export const checkWorkingTimeSchema = Joi.object({
+  dateTime: Joi.alternatives()
+    .try(
+      Joi.date().iso(),
+      Joi.string().isoDate(),
+      Joi.number().integer().positive()
+    )
+    .required()
+    .messages({
+      'alternatives.match': 'dateTime phải là định dạng ISO date, timestamp hoặc date object hợp lệ',
+      'any.required': 'dateTime là bắt buộc'
+    })
+});
+
+// Validation cho route parameters
+export const workingHoursParamsSchema = Joi.object({
+  id: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .required()
+    .messages({
+      'string.pattern.base': 'ID không hợp lệ',
+      'any.required': 'ID là bắt buộc'
+    })
+});
+
+// Validation cho query parameters của getWorkingHours
+export const workingHoursQuerySchema = Joi.object({
+  page: Joi.number()
+    .integer()
+    .min(1)
+    .optional(),
+  limit: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .optional(),
+  isActive: Joi.string()
+    .valid('true', 'false')
+    .optional()
+});
+
+// Department validation schemas
+export const departmentSchema = Joi.object({
+  name: Joi.string()
+    .min(1)
+    .max(100)
+    .trim()
+    .required()
+    .messages({
+      'string.min': 'Tên phòng ban không được để trống',
+      'string.max': 'Tên phòng ban không được vượt quá 100 ký tự',
+      'any.required': 'Tên phòng ban là bắt buộc'
+    }),
+  code: Joi.string()
+    .min(1)
+    .max(20)
+    .uppercase()
+    .trim()
+    .pattern(/^[A-Z0-9_]+$/)
+    .required()
+    .messages({
+      'string.min': 'Mã phòng ban không được để trống',
+      'string.max': 'Mã phòng ban không được vượt quá 20 ký tự',
+      'string.pattern.base': 'Mã phòng ban chỉ được chứa chữ cái viết hoa, số và dấu gạch dưới',
+      'any.required': 'Mã phòng ban là bắt buộc'
+    }),
+  description: Joi.string()
+    .max(500)
+    .trim()
+    .optional()
+    .messages({
+      'string.max': 'Mô tả không được vượt quá 500 ký tự'
+    }),
+  manager: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .optional()
+    .messages({
+      'string.pattern.base': 'Manager ID không hợp lệ'
+    }),
+  parentDepartment: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .optional()
+    .messages({
+      'string.pattern.base': 'Parent Department ID không hợp lệ'
+    }),
+  location: Joi.object({
+    building: Joi.string()
+      .max(100)
+      .trim()
+      .optional()
+      .messages({
+        'string.max': 'Tên tòa nhà không được vượt quá 100 ký tự'
+      }),
+    floor: Joi.string()
+      .max(10)
+      .trim()
+      .optional()
+      .messages({
+        'string.max': 'Tầng không được vượt quá 10 ký tự'
+      }),
+    room: Joi.string()
+      .max(20)
+      .trim()
+      .optional()
+      .messages({
+        'string.max': 'Phòng không được vượt quá 20 ký tự'
+      })
+  }).optional(),
+  contact: Joi.object({
+    phone: Joi.string()
+      .pattern(/^[0-9]{10,11}$/)
+      .optional()
+      .messages({
+        'string.pattern.base': 'Số điện thoại phải có 10-11 chữ số'
+      }),
+    email: Joi.string()
+      .email()
+      .lowercase()
+      .trim()
+      .optional()
+      .messages({
+        'string.email': 'Email không hợp lệ'
+      }),
+    extension: Joi.string()
+      .max(10)
+      .trim()
+      .optional()
+      .messages({
+        'string.max': 'Số nội bộ không được vượt quá 10 ký tự'
+      })
+  }).optional(),
+  isActive: Joi.boolean().optional()
+});
+
+export const updateDepartmentSchema = departmentSchema.fork(['name', 'code'], (schema) => schema.optional());
+
+// Middleware validation functions
+const validateQuery = (schema) => {
+  return (req, res, next) => {
+    const { error } = schema.validate(req.query, { abortEarly: false });
+    
+    if (error) {
+      const errors = error.details.map(detail => ({
+        field: detail.path.join('.'),
+        message: detail.message
+      }));
+      
+      return res.status(400).json({
+        success: false,
+        message: 'Query parameters không hợp lệ',
+        errors
+      });
+    }
+    
+    next();
+  };
+};
+
+const validateParams = (schema) => {
+  return (req, res, next) => {
+    const { error } = schema.validate(req.params, { abortEarly: false });
+    
+    if (error) {
+      const errors = error.details.map(detail => ({
+        field: detail.path.join('.'),
+        message: detail.message
+      }));
+      
+      return res.status(400).json({
+        success: false,
+        message: 'Route parameters không hợp lệ',
+        errors
+      });
+    }
+    
+    next();
+  };
+};
+
 // Export validation middleware
 export const validateRegister = validate(registerSchema);
 export const validateLogin = validate(loginSchema);
@@ -313,3 +579,10 @@ export const validateUpdateUser = validate(updateUserSchema);
 export const validateChangePassword = validate(changePasswordSchema);
 export const validateCamera = validate(cameraSchema);
 export const validateUpdateCamera = validate(updateCameraSchema);
+export const validateWorkingHours = validate(workingHoursSchema);
+export const validateUpdateWorkingHours = validate(updateWorkingHoursSchema);
+export const validateCheckWorkingTime = validateQuery(checkWorkingTimeSchema);
+export const validateWorkingHoursParams = validateParams(workingHoursParamsSchema);
+export const validateWorkingHoursQuery = validateQuery(workingHoursQuerySchema);
+export const validateDepartment = validate(departmentSchema);
+export const validateUpdateDepartment = validate(updateDepartmentSchema);
