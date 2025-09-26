@@ -13,6 +13,13 @@ import {
   authenticateToken,
   requireSuperAdmin
 } from '../middleware/auth.js';
+import {
+  validateWorkingHours,
+  validateUpdateWorkingHours,
+  validateCheckWorkingTime,
+  validateWorkingHoursParams,
+  validateWorkingHoursQuery
+} from '../middleware/validation.js';
 
 const router = express.Router();
 
@@ -21,16 +28,16 @@ router.use(authenticateToken);
 
 // Public routes (chỉ cần đăng nhập)
 router.get('/active', getActiveWorkingHours);
-router.get('/check', checkWorkingTime);
+router.get('/check', validateCheckWorkingTime, checkWorkingTime);
 
 // Super admin only routes
 router.use(requireSuperAdmin);
 
-router.get('/', getWorkingHours);
-router.get('/:id', getWorkingHoursById);
-router.post('/', createWorkingHours);
-router.put('/:id', updateWorkingHours);
-router.put('/:id/activate', activateWorkingHours);
-router.delete('/:id', deleteWorkingHours);
+router.get('/', validateWorkingHoursQuery, getWorkingHours);
+router.get('/:id', validateWorkingHoursParams, getWorkingHoursById);
+router.post('/', validateWorkingHours, createWorkingHours);
+router.put('/:id', validateWorkingHoursParams, validateUpdateWorkingHours, updateWorkingHours);
+router.put('/:id/activate', validateWorkingHoursParams, activateWorkingHours);
+router.delete('/:id', validateWorkingHoursParams, deleteWorkingHours);
 
 export default router;
