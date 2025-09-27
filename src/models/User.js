@@ -37,9 +37,8 @@ const userSchema = new mongoose.Schema({
     default: 'user'
   },
   department: {
-    type: String,
-    trim: true,
-    maxlength: [100, 'Phòng ban không được vượt quá 100 ký tự']
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Department'
   },
   employeeId: {
     type: String,
@@ -74,6 +73,7 @@ userSchema.index({ username: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1 });
 userSchema.index({ employeeId: 1 }, { sparse: true });
+userSchema.index({ department: 1 });
 
 // Middleware mã hóa mật khẩu trước khi save
 userSchema.pre('save', async function(next) {
@@ -102,9 +102,41 @@ userSchema.methods.cleanExpiredTokens = function() {
   );
 };
 
+// Method lấy thông tin phòng ban chi tiết
+userSchema.methods.getDepartmentInfo = function() {
+  if (!this.department) return null;
+  return this.populate('department', 'name code description manager parentDepartment location contact');
+};
+
+// Method kiểm tra có phải manager của phòng ban không
+userSchema.methods.isDepartmentManager = async function() {
+  if (!this.department) return false;
+  const Department = mongoose.model('Department');
+  const dept = await Department.findById(this.department);
+  return dept && dept.manager && dept.manager.toString() === this._id.toString();
+};
+
 // Static method tìm user active
 userSchema.statics.findActive = function(filter = {}) {
-  return this.find({ ...filter, isActive: true });
+  return this.find({ ...filter, isActive: true })
+    .populate('department', 'name code');
+};
+
+// Static method tìm user theo phòng ban
+userSchema.statics.findByDepartment = function(departmentId) {
+  return this.find({ 
+    department: departmentId,
+    isActive: true 
+  }).populate('department', 'name code');
+};
+
+// Static method tìm user theo role trong phòng ban
+userSchema.statics.findByDepartmentAndRole = function(departmentId, role) {
+  return this.find({ 
+    department: departmentId,
+    role: role,
+    isActive: true 
+  }).populate('department', 'name code');
 };
 
 export default mongoose.model('User', userSchema);

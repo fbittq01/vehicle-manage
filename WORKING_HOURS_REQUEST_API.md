@@ -24,6 +24,7 @@ Content-Type: application/json
   "plannedEndDateTime": "2025-09-28T18:30:00.000Z", // chỉ cần khi requestType = "both"
   "licensePlate": "29A-123.45",
   "reason": "Có việc khẩn cấp cần đến sớm để chuẩn bị họp với khách hàng",
+  "requestedBy": "670123456789abcdef012346", // optional - chỉ admin mới có thể dùng để tạo request thay mặt user khác trong cùng department
   "metadata": {
     "emergencyContact": "0912345678",
     "vehicleInfo": "Xe Honda City màu trắng"

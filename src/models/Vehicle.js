@@ -57,13 +57,6 @@ vehicleSchema.index({ licensePlate: 1 });
 vehicleSchema.index({ owner: 1 });
 vehicleSchema.index({ vehicleType: 1 });
 vehicleSchema.index({ isActive: 1 });
-vehicleSchema.index({ registrationDate: -1 });
-
-// Virtual field để kiểm tra xe hết hạn đăng ký
-vehicleSchema.virtual('registrationExpired').get(function() {
-  if (!this.expiryDate) return false;
-  return this.expiryDate < new Date();
-});
 
 // Static method tìm xe active
 vehicleSchema.statics.findActive = function(filter = {}) {
