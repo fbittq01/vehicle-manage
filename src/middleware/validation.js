@@ -557,7 +557,7 @@ export const workingHoursRequestSchema = Joi.object({
     }),
   
   licensePlate: Joi.string()
-    .pattern(/^[0-9]{2}[A-Z]{1,2}[\s\-]?[0-9]{3,5}$/)
+    .pattern(/^[0-9]{2}[A-Z]{1,2}-[0-9]{3,4}\.[0-9]{2}$|^[0-9]{2}[A-Z]{1,2}[0-9]{3,4}$/)
     .required()
     .messages({
       'string.pattern.base': 'Biển số xe không đúng định dạng (VD: 30A-123.45)',
@@ -572,6 +572,14 @@ export const workingHoursRequestSchema = Joi.object({
       'string.min': 'Lý do phải có ít nhất 10 ký tự',
       'string.max': 'Lý do không được vượt quá 500 ký tự',
       'any.required': 'Lý do yêu cầu là bắt buộc'
+    }),
+  
+  // Cho phép admin tạo yêu cầu thay mặt user khác trong cùng department
+  requestedBy: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .optional()
+    .messages({
+      'string.pattern.base': 'ID người yêu cầu không hợp lệ'
     }),
   
   metadata: Joi.object({

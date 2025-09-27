@@ -80,15 +80,50 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
     plannedEndDateTime,
     licensePlate,
     reason,
-    metadata
+    metadata,
+    requestedBy
   } = req.body;
 
-  // Validate licensePlate thuộc về user
+  // Xác định người được yêu cầu - mặc định là user hiện tại
+  let targetUserId = req.user._id;
+  let targetUser = req.user;
+
+  // Nếu có requestedBy và user là admin, kiểm tra quyền tạo request thay mặt
+  if (requestedBy && ['admin', 'super_admin'].includes(req.user.role)) {
+    // Tìm user được yêu cầu
+    const requestedUser = await User.findById(requestedBy).populate('department');
+    if (!requestedUser) {
+      return sendErrorResponse(res, 'Không tìm thấy người dùng được yêu cầu', 404);
+    }
+
+    // Kiểm tra admin có quyền tạo request cho user này không (cùng department)
+    if (req.user.role === 'admin') {
+      // Populate department của admin hiện tại
+      await req.user.populate('department');
+      
+      // Kiểm tra cùng department
+      if (!req.user.department || !requestedUser.department || 
+          req.user.department._id.toString() !== requestedUser.department._id.toString()) {
+        return sendErrorResponse(res, 'Bạn chỉ có thể tạo yêu cầu cho nhân viên trong cùng phòng ban', 403);
+      }
+    }
+    // Super admin có thể tạo cho bất kỳ ai
+
+    targetUserId = requestedUser._id;
+    targetUser = requestedUser;
+  } else if (requestedBy && req.user.role === 'user') {
+    return sendErrorResponse(res, 'Bạn không có quyền tạo yêu cầu thay mặt người khác', 403);
+  }
+
+  // Validate licensePlate thuộc về target user
   const normalizedPlate = normalizeLicensePlate(licensePlate);
-  const vehicle = await Vehicle.findOne({ licensePlate: normalizedPlate, owner: req.user._id });
+  const vehicle = await Vehicle.findOne({ licensePlate: normalizedPlate, owner: targetUserId });
   
   if (!vehicle) {
-    return sendErrorResponse(res, 'Bạn không có quyền tạo yêu cầu cho biển số này', 403);
+    const errorMessage = targetUserId.toString() === req.user._id.toString() 
+      ? 'Bạn không có quyền tạo yêu cầu cho biển số này'
+      : `Người dùng ${targetUser.name} không sở hữu phương tiện có biển số này`;
+    return sendErrorResponse(res, errorMessage, 403);
   }
 
   // Validate thời gian
@@ -98,10 +133,10 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
   if (plannedTime <= now) {
     return sendErrorResponse(res, 'Thời gian dự kiến phải lớn hơn thời gian hiện tại', 400);
   }
-
+  
   // Kiểm tra không có yêu cầu trùng lặp trong cùng khoảng thời gian
   const existingRequest = await WorkingHoursRequest.findOne({
-    requestedBy: req.user._id,
+    requestedBy: targetUserId,
     licensePlate: normalizedPlate,
     status: { $in: ['pending', 'approved'] },
     plannedDateTime: {
@@ -115,14 +150,15 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
   }
 
   const requestData = {
-    requestedBy: req.user._id,
+    requestedBy: targetUserId,
     requestType,
     plannedDateTime: plannedTime,
     licensePlate: normalizedPlate,
     reason: reason.trim(),
     metadata: {
-      department: req.user.department,
-      phoneNumber: req.user.phone,
+      department: targetUser.department?._id,
+      phoneNumber: targetUser.phone,
+      createdBy: req.user._id, // Ghi lại ai là người tạo request
       ...metadata
     }
   };
@@ -134,10 +170,25 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
   const request = new WorkingHoursRequest(requestData);
   await request.save();
 
-  const populatedRequest = await WorkingHoursRequest.findById(request._id)
-    .populate('requestedBy', 'name username employeeId department phone');
+  // Tự động approve nếu được tạo bởi admin hoặc super_admin
+  if (['admin', 'super_admin'].includes(req.user.role)) {
+    request.status = 'approved';
+    request.approvedBy = req.user._id;
+    request.approvedAt = new Date();
+    request.validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // Hết hạn sau 24 giờ
+    request.approvalNote = `Tự động phê duyệt - Được tạo bởi admin ${req.user.name}`;
+    await request.save();
+  }
 
-  sendSuccessResponse(res, { request: populatedRequest }, 'Tạo yêu cầu đăng ký thành công', 201);
+  const populatedRequest = await WorkingHoursRequest.findById(request._id)
+    .populate('requestedBy', 'name username employeeId department phone')
+    .populate('approvedBy', 'name username');
+
+  const successMessage = targetUserId.toString() === req.user._id.toString()
+    ? (request.status === 'approved' ? 'Tạo và phê duyệt yêu cầu đăng ký thành công' : 'Tạo yêu cầu đăng ký thành công')
+    : `Tạo ${request.status === 'approved' ? 'và phê duyệt ' : ''}yêu cầu đăng ký thay mặt ${targetUser.name} thành công`;
+
+  sendSuccessResponse(res, { request: populatedRequest }, successMessage, 201);
 });
 
 // Cập nhật yêu cầu (chỉ cho user tự cập nhật yêu cầu pending của mình)
