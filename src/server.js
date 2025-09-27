@@ -121,7 +121,6 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
   }
 }));
 
->>>>>>> Stashed changes
 // Routes
 app.use('/api', routes);
 
