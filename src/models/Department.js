@@ -101,9 +101,16 @@ departmentSchema.virtual('subDepartments', {
 // Virtual field để đếm số nhân viên trong phòng ban
 departmentSchema.virtual('employeeCount', {
   ref: 'User',
-  localField: 'name',
+  localField: '_id',
   foreignField: 'department',
   count: true
+});
+
+// Virtual field để lấy danh sách nhân viên trong phòng ban
+departmentSchema.virtual('employees', {
+  ref: 'User',
+  localField: '_id',
+  foreignField: 'department'
 });
 
 // Static method tìm phòng ban active
@@ -138,6 +145,15 @@ departmentSchema.statics.findByManager = function(managerId) {
   }).populate('parentDepartment', 'name code');
 };
 
+// Static method lấy phòng ban với thông tin nhân viên
+departmentSchema.statics.findWithEmployees = function(filter = {}) {
+  return this.find({ ...filter, isActive: true })
+    .populate('manager', 'name username email')
+    .populate('parentDepartment', 'name code')
+    .populate('employees', 'name username email role employeeId isActive')
+    .populate('createdBy', 'name username');
+};
+
 // Instance method kiểm tra có phải phòng ban gốc không
 departmentSchema.methods.isRootDepartment = function() {
   return !this.parentDepartment;
@@ -158,6 +174,35 @@ departmentSchema.methods.getHierarchyPath = async function() {
   }
   
   return path.join(' > ');
+};
+
+// Instance method lấy danh sách nhân viên trong phòng ban
+departmentSchema.methods.getEmployees = function(includeInactive = false) {
+  const User = mongoose.model('User');
+  const filter = { department: this._id };
+  if (!includeInactive) {
+    filter.isActive = true;
+  }
+  return User.find(filter).select('name username email role employeeId isActive');
+};
+
+// Instance method lấy số lượng nhân viên theo role
+departmentSchema.methods.getEmployeeCountByRole = function() {
+  const User = mongoose.model('User');
+  return User.aggregate([
+    {
+      $match: {
+        department: this._id,
+        isActive: true
+      }
+    },
+    {
+      $group: {
+        _id: '$role',
+        count: { $sum: 1 }
+      }
+    }
+  ]);
 };
 
 export default mongoose.model('Department', departmentSchema);
