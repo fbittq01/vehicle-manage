@@ -25,7 +25,34 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware setup
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'", 
+        "'unsafe-inline'", 
+        "'unsafe-eval'", 
+        "https://unpkg.com",
+        "https://cdn.jsdelivr.net"
+      ],
+      styleSrc: [
+        "'self'", 
+        "'unsafe-inline'", 
+        "https://fonts.googleapis.com",
+        "https://unpkg.com",
+        "https://cdn.jsdelivr.net"
+      ],
+      fontSrc: [
+        "'self'", 
+        "https://fonts.gstatic.com",
+        "https://unpkg.com"
+      ],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'"],
+      workerSrc: ["'self'", "blob:"]
+    }
+  }
 }));
 
 app.use(cors({
@@ -36,8 +63,20 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static files từ uploads directory
-app.use('/uploads', express.static('uploads'));
+// Serve static files từ uploads directory với MIME types đúng
+app.use('/uploads', express.static('uploads', {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css');
+    } else if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    } else if (path.endsWith('.png')) {
+      res.setHeader('Content-Type', 'image/png');
+    } else if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
+      res.setHeader('Content-Type', 'image/jpeg');
+    }
+  }
+}));
 
 // Logging middleware
 if (process.env.NODE_ENV === 'production') {
@@ -49,19 +88,40 @@ if (process.env.NODE_ENV === 'production') {
 // Rate limiting
 app.use('/api', generalLimiter);
 
-// Swagger Documentation
+// Swagger Documentation với cấu hình CSP cho Vercel
+app.use('/api-docs', (req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.jsdelivr.net; " +
+    "font-src 'self' https://fonts.gstatic.com https://unpkg.com; " +
+    "img-src 'self' data: https: blob:; " +
+    "connect-src 'self'; " +
+    "worker-src 'self' blob:;"
+  );
+  next();
+});
+
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
   explorer: true,
-  customCss: '.swagger-ui .topbar { display: none }',
+  customCss: `
+    .swagger-ui .topbar { display: none }
+    .swagger-ui .info { margin: 50px 0 }
+    .swagger-ui .scheme-container { background: #fafafa; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+  `,
   customSiteTitle: 'Vehicle Management API Documentation',
   swaggerOptions: {
     persistAuthorization: true,
     displayRequestDuration: true,
     filter: true,
-    showRequestHeaders: true
+    showRequestHeaders: true,
+    tryItOutEnabled: true,
+    supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch']
   }
 }));
 
+>>>>>>> Stashed changes
 // Routes
 app.use('/api', routes);
 
@@ -89,27 +149,34 @@ const startServer = async () => {
     // Initialize database (tạo super admin, etc.)
     await initializeDatabase();
     
-    // Khởi tạo Socket.IO với HTTP server
-    const httpServer = socketService.initialize(app);
-    
-    // Start server
-    httpServer.listen(PORT, () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
-      console.log(`📡 Socket.IO server is running`);
-      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🔗 API URL: http://localhost:${PORT}/api`);
-      console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-    });
-
-    // Graceful shutdown
-    process.on('SIGTERM', () => {
-      console.log('SIGTERM received. Shutting down gracefully...');
-      httpServer.close(() => {
-        console.log('Server closed');
-        socketService.close();
-        process.exit(0);
+    // Chỉ khởi tạo Socket.IO và HTTP server khi không chạy trên Vercel
+    if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+      // Khởi tạo Socket.IO với HTTP server
+      const httpServer = socketService.initialize(app);
+      
+      // Start server
+      httpServer.listen(PORT, () => {
+        console.log(`🚀 Server is running on port ${PORT}`);
+        console.log(`📡 Socket.IO server is running`);
+        console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`🔗 API URL: http://localhost:${PORT}/api`);
+        console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+        console.log(`📚 Documentation: http://localhost:${PORT}/api-docs`);
       });
-    });
+
+      // Graceful shutdown
+      process.on('SIGTERM', () => {
+        console.log('SIGTERM received. Shutting down gracefully...');
+        httpServer.close(() => {
+          console.log('Server closed');
+          socketService.close();
+          process.exit(0);
+        });
+      });
+    } else {
+      console.log('🚀 Vercel serverless function initialized');
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    }
 
     process.on('SIGINT', () => {
       console.log('SIGINT received. Shutting down gracefully...');
@@ -140,3 +207,6 @@ process.on('uncaughtException', (err) => {
 
 // Start the server
 startServer();
+
+// Export app for Vercel serverless functions
+export default app;

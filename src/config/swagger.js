@@ -15,8 +15,10 @@ const options = {
     },
     servers: [
       {
-        url: 'http://localhost:8000',
-        description: 'Development server'
+        url: process.env.NODE_ENV === 'production' 
+          ? process.env.BASE_URL || 'https://your-vercel-domain.vercel.app'
+          : 'http://localhost:8000',
+        description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server'
       }
     ],
     components: {

@@ -4,11 +4,13 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
+    "build": "echo 'Build complete'",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "setup:db": "node setup-database.js",
     "test:basic": "node test-basic.js",
-    "test": "node test-basic.js"
+    "test": "node test-basic.js",
+    "vercel-build": "echo 'Vercel build complete'"
   },
   "keywords": [
     "vehicle",
@@ -21,6 +23,9 @@
   "author": "",
   "license": "ISC",
   "description": "Hệ thống quản lý phương tiện ra vào cổng thông qua biển số",
+  "engines": {
+    "node": "18.x"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
