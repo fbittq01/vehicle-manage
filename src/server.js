@@ -15,7 +15,7 @@ import {
 import {
   generalLimiter
 } from './middleware/rateLimiter.js';
-import { specs, swaggerUi } from './config/swagger.js';
+import { specs, swaggerUi, swaggerSetup, swaggerUIOptions } from './config/swagger.js';
 
 // Load environment variables
 dotenv.config();
@@ -25,7 +25,8 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware setup
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false // Disable default CSP để sử dụng custom CSP cho Swagger
 }));
 
 app.use(cors({
@@ -49,18 +50,10 @@ if (process.env.NODE_ENV === 'production') {
 // Rate limiting
 app.use('/api', generalLimiter);
 
-// Swagger Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
-  explorer: true,
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Vehicle Management API Documentation',
-  swaggerOptions: {
-    persistAuthorization: true,
-    displayRequestDuration: true,
-    filter: true,
-    showRequestHeaders: true
-  }
-}));
+// Swagger Documentation với CSP middleware
+app.use('/api-docs', swaggerSetup);
+app.use('/api-docs', swaggerUi.serve);
+app.get('/api-docs', swaggerUi.setup(specs, swaggerUIOptions));
 
 // Routes
 app.use('/api', routes);

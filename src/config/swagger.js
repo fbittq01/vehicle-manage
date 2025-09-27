@@ -360,4 +360,39 @@ const options = {
 
 const specs = swaggerJSDoc(options);
 
-export { swaggerUi, specs };
+// Custom setup với CSP headers để khắc phục lỗi MIME type và Content Security Policy
+const swaggerSetup = (req, res, next) => {
+  // Thiết lập Content Security Policy headers
+  res.setHeader('Content-Security-Policy', 
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; " +
+    "style-src 'self' 'unsafe-inline' https://unpkg.com; " +
+    "img-src 'self' data: https:; " +
+    "font-src 'self' data: https://unpkg.com; " +
+    "connect-src 'self';"
+  );
+  
+  // Thiết lập các headers khác để đảm bảo MIME types đúng
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  next();
+};
+
+// Cấu hình options cho Swagger UI
+const swaggerUIOptions = {
+  customCss: `
+    .swagger-ui .topbar { display: none; }
+    .swagger-ui .information-container { margin: 20px 0; }
+    .swagger-ui .scheme-container { margin: 20px 0; padding: 20px; background: #f7f7f7; }
+  `,
+  customSiteTitle: "Hệ thống Quản lý Phương tiện - API Documentation",
+  swaggerOptions: {
+    persistAuthorization: true,
+    displayRequestDuration: true,
+    docExpansion: 'none',
+    filter: true,
+    showExtensions: true,
+    tryItOutEnabled: true
+  }
+};
+
+export { swaggerUi, specs, swaggerSetup, swaggerUIOptions };
