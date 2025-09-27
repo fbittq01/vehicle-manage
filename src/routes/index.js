@@ -5,6 +5,7 @@ import vehicleRoutes from './vehicles.js';
 import accessLogRoutes from './accessLogs.js';
 import cameraRoutes from './cameras.js';
 import workingHoursRoutes from './workingHours.js';
+import workingHoursRequestRoutes from './workingHoursRequests.js';
 import departmentRoutes from './departments.js';
 // import simulationRoutes from './simulation.js';
 
@@ -28,6 +29,7 @@ router.use('/vehicles', vehicleRoutes);
 router.use('/access-logs', accessLogRoutes);
 router.use('/cameras', cameraRoutes);
 router.use('/working-hours', workingHoursRoutes);
+router.use('/working-hours-requests', workingHoursRequestRoutes);
 router.use('/departments', departmentRoutes);
 // router.use('/simulation', simulationRoutes);
 

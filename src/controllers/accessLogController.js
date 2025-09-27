@@ -1,9 +1,10 @@
-import { AccessLog, Vehicle, User, WorkingHours } from '../models/index.js';
+import { AccessLog, Vehicle, User, WorkingHours, WorkingHoursRequest } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '../utils/response.js';
 import { getPaginationParams, createPagination } from '../utils/response.js';
 import { normalizeLicensePlate } from '../utils/licensePlate.js';
 import { asyncHandler } from '../middleware/logger.js';
 import { processRecognitionImages } from '../utils/fileStorage.js';
+import { checkAndApplyRequest } from './workingHoursRequestController.js';
 
 // Lấy danh sách access logs
 export const getAccessLogs = asyncHandler(async (req, res) => {
@@ -135,6 +136,29 @@ export const createAccessLogLogic = async (logData) => {
   }
 
   await accessLog.save();
+
+  // Kiểm tra và áp dụng yêu cầu đăng ký giờ hành chính (nếu có)
+  const requestCheck = await checkAndApplyRequest(accessLog);
+  if (requestCheck.hasValidRequest) {
+    // Cập nhật access log với thông tin yêu cầu được phê duyệt
+    accessLog.verificationNote = accessLog.verificationNote 
+      ? `${accessLog.verificationNote}. Có yêu cầu đăng ký được phê duyệt: ${requestCheck.reason}`
+      : `Có yêu cầu đăng ký được phê duyệt: ${requestCheck.reason}`;
+    
+    // Thêm metadata về yêu cầu đăng ký
+    accessLog.metadata = {
+      ...accessLog.metadata,
+      workingHoursRequest: {
+        requestId: requestCheck.requestId,
+        requestedBy: requestCheck.requestedBy,
+        reason: requestCheck.reason,
+        approvedBy: requestCheck.approvedBy,
+        approvedAt: requestCheck.approvedAt
+      }
+    };
+    
+    await accessLog.save();
+  }
 
   // Populate để trả về đầy đủ thông tin
   const populatedLog = await AccessLog.findById(accessLog._id)
@@ -549,14 +573,25 @@ export const getWorkingHoursStats = asyncHandler(async (req, res) => {
     const workingTimeCheck = workingHours.isWorkingTime(log.createdAt);
     analysis.workingTimeCheck = workingTimeCheck;
 
+    // Kiểm tra có yêu cầu đăng ký được phê duyệt không
+    const hasApprovedRequest = log.metadata?.workingHoursRequest?.requestId;
+    analysis.hasApprovedRequest = !!hasApprovedRequest;
+    if (hasApprovedRequest) {
+      analysis.approvedRequestInfo = log.metadata.workingHoursRequest;
+    }
+
     if (log.action === 'entry') {
       const lateCheck = workingHours.isLate(log.createdAt);
       analysis.lateCheck = lateCheck;
-      analysis.status = lateCheck.isLate ? 'late' : 'ontime';
+      // Nếu có yêu cầu được phê duyệt, không tính là vi phạm
+      analysis.status = (lateCheck.isLate && !hasApprovedRequest) ? 'late' : 'ontime';
+      analysis.isViolation = lateCheck.isLate && !hasApprovedRequest;
     } else if (log.action === 'exit') {
       const earlyCheck = workingHours.isEarly(log.createdAt);
       analysis.earlyCheck = earlyCheck;
-      analysis.status = earlyCheck.isEarly ? 'early' : 'ontime';
+      // Nếu có yêu cầu được phê duyệt, không tính là vi phạm
+      analysis.status = (earlyCheck.isEarly && !hasApprovedRequest) ? 'early' : 'ontime';
+      analysis.isViolation = earlyCheck.isEarly && !hasApprovedRequest;
     }
 
     analysisResults.push(analysis);
@@ -696,7 +731,9 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
 
     if (log.action === 'entry') {
       const lateCheck = workingHours.isLate(log.createdAt);
-      if (lateCheck.isLate) {
+      // Chỉ tính vi phạm nếu muộn giờ và không có yêu cầu đăng ký được phê duyệt
+      const hasApprovedRequest = log.metadata?.workingHoursRequest?.requestId;
+      if (lateCheck.isLate && !hasApprovedRequest) {
         userViolations[userId].lateEntries.push({
           date: log.createdAt.toISOString().split('T')[0],
           time: log.createdAt.toTimeString().substring(0, 5),
@@ -707,7 +744,9 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
       }
     } else if (log.action === 'exit') {
       const earlyCheck = workingHours.isEarly(log.createdAt);
-      if (earlyCheck.isEarly) {
+      // Chỉ tính vi phạm nếu về sớm và không có yêu cầu đăng ký được phê duyệt
+      const hasApprovedRequest = log.metadata?.workingHoursRequest?.requestId;
+      if (earlyCheck.isEarly && !hasApprovedRequest) {
         userViolations[userId].earlyExits.push({
           date: log.createdAt.toISOString().split('T')[0],
           time: log.createdAt.toTimeString().substring(0, 5),
@@ -813,6 +852,7 @@ export const getUserWorkingHoursReport = asyncHandler(async (req, res) => {
     }
 
     const timeStr = log.createdAt.toTimeString().substring(0, 5);
+    const hasApprovedRequest = log.metadata?.workingHoursRequest?.requestId;
 
     if (log.action === 'entry') {
       const lateCheck = workingHours.isLate(log.createdAt);
@@ -821,11 +861,14 @@ export const getUserWorkingHoursReport = asyncHandler(async (req, res) => {
         licensePlate: log.licensePlate,
         vehicle: log.vehicle,
         isLate: lateCheck.isLate,
-        lateMinutes: lateCheck.lateMinutes || 0
+        lateMinutes: lateCheck.lateMinutes || 0,
+        hasApprovedRequest: !!hasApprovedRequest,
+        requestInfo: hasApprovedRequest ? log.metadata.workingHoursRequest : null
       };
       dailyReport[dateKey].entries.push(entry);
 
-      if (lateCheck.isLate) {
+      // Chỉ tính vi phạm nếu muộn giờ và không có yêu cầu đăng ký được phê duyệt
+      if (lateCheck.isLate && !hasApprovedRequest) {
         dailyReport[dateKey].violations.push({
           type: 'late_entry',
           time: timeStr,
@@ -840,14 +883,17 @@ export const getUserWorkingHoursReport = asyncHandler(async (req, res) => {
         licensePlate: log.licensePlate,
         vehicle: log.vehicle,
         isEarly: earlyCheck.isEarly,
-        earlyMinutes: earlyCheck.earlyMinutes || 0
+        earlyMinutes: earlyCheck.earlyMinutes || 0,
+        hasApprovedRequest: !!hasApprovedRequest,
+        requestInfo: hasApprovedRequest ? log.metadata.workingHoursRequest : null
       };
       dailyReport[dateKey].exits.push(exit);
 
-      if (earlyCheck.isEarly) {
+      // Chỉ tính vi phạm nếu về sớm và không có yêu cầu đăng ký được phê duyệt
+      if (earlyCheck.isEarly && !hasApprovedRequest) {
         dailyReport[dateKey].violations.push({
           type: 'early_exit',
-          time: timeStr,
+                    time: timeStr,
           minutes: earlyCheck.earlyMinutes,
           licensePlate: log.licensePlate
         });

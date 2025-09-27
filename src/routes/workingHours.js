@@ -10,6 +10,9 @@ import {
   checkWorkingTime
 } from '../controllers/workingHoursController.js';
 import {
+  getRequestsStats
+} from '../controllers/workingHoursRequestController.js';
+import {
   authenticateToken,
   requireSuperAdmin
 } from '../middleware/auth.js';
@@ -29,6 +32,7 @@ router.use(authenticateToken);
 // Public routes (chỉ cần đăng nhập)
 router.get('/active', getActiveWorkingHours);
 router.get('/check', validateCheckWorkingTime, checkWorkingTime);
+router.get('/requests-stats', getRequestsStats);
 
 // Super admin only routes
 router.use(requireSuperAdmin);
