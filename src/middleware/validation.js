@@ -526,6 +526,130 @@ export const departmentSchema = Joi.object({
 
 export const updateDepartmentSchema = departmentSchema.fork(['name', 'code'], (schema) => schema.optional());
 
+// Working Hours Request Validation Schemas
+export const workingHoursRequestSchema = Joi.object({
+  requestType: Joi.string()
+    .valid('entry', 'exit', 'both')
+    .required()
+    .messages({
+      'any.only': 'Loại yêu cầu phải là entry, exit hoặc both',
+      'any.required': 'Loại yêu cầu là bắt buộc'
+    }),
+  
+  plannedDateTime: Joi.date()
+    .greater('now')
+    .required()
+    .messages({
+      'date.greater': 'Thời gian dự kiến phải lớn hơn thời gian hiện tại',
+      'any.required': 'Thời gian dự kiến là bắt buộc'
+    }),
+  
+  plannedEndDateTime: Joi.date()
+    .greater(Joi.ref('plannedDateTime'))
+    .when('requestType', {
+      is: 'both',
+      then: Joi.required(),
+      otherwise: Joi.optional()
+    })
+    .messages({
+      'date.greater': 'Thời gian kết thúc phải lớn hơn thời gian bắt đầu',
+      'any.required': 'Thời gian kết thúc là bắt buộc khi loại yêu cầu là both'
+    }),
+  
+  licensePlate: Joi.string()
+    .pattern(/^[0-9]{2}[A-Z]{1,2}[\s\-]?[0-9]{3,5}$/)
+    .required()
+    .messages({
+      'string.pattern.base': 'Biển số xe không đúng định dạng (VD: 30A-123.45)',
+      'any.required': 'Biển số xe là bắt buộc'
+    }),
+  
+  reason: Joi.string()
+    .min(10)
+    .max(500)
+    .required()
+    .messages({
+      'string.min': 'Lý do phải có ít nhất 10 ký tự',
+      'string.max': 'Lý do không được vượt quá 500 ký tự',
+      'any.required': 'Lý do yêu cầu là bắt buộc'
+    }),
+  
+  metadata: Joi.object({
+    emergencyContact: Joi.string().max(15),
+    vehicleInfo: Joi.string().max(200)
+  }).optional()
+});
+
+export const updateWorkingHoursRequestSchema = Joi.object({
+  plannedDateTime: Joi.date()
+    .greater('now')
+    .optional()
+    .messages({
+      'date.greater': 'Thời gian dự kiến phải lớn hơn thời gian hiện tại'
+    }),
+  
+  plannedEndDateTime: Joi.date()
+    .greater(Joi.ref('plannedDateTime'))
+    .optional()
+    .messages({
+      'date.greater': 'Thời gian kết thúc phải lớn hơn thời gian bắt đầu'
+    }),
+  
+  reason: Joi.string()
+    .min(10)
+    .max(500)
+    .optional()
+    .messages({
+      'string.min': 'Lý do phải có ít nhất 10 ký tự',
+      'string.max': 'Lý do không được vượt quá 500 ký tự'
+    }),
+  
+  metadata: Joi.object({
+    emergencyContact: Joi.string().max(15),
+    vehicleInfo: Joi.string().max(200)
+  }).optional()
+});
+
+export const approvalRequestSchema = Joi.object({
+  approvalNote: Joi.string()
+    .max(300)
+    .optional()
+    .messages({
+      'string.max': 'Ghi chú phê duyệt không được vượt quá 300 ký tự'
+    }),
+  
+  validHours: Joi.number()
+    .min(1)
+    .max(168) // Tối đa 1 tuần
+    .default(24)
+    .optional()
+    .messages({
+      'number.min': 'Thời gian hiệu lực phải ít nhất 1 giờ',
+      'number.max': 'Thời gian hiệu lực không được quá 168 giờ (1 tuần)'
+    })
+});
+
+export const workingHoursRequestParamsSchema = Joi.object({
+  id: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .required()
+    .messages({
+      'string.pattern.base': 'ID yêu cầu không hợp lệ',
+      'any.required': 'ID yêu cầu là bắt buộc'
+    })
+});
+
+export const workingHoursRequestQuerySchema = Joi.object({
+  page: Joi.number().min(1).default(1),
+  limit: Joi.number().min(1).max(100).default(20),
+  status: Joi.string().valid('pending', 'approved', 'rejected', 'expired', 'used').optional(),
+  requestType: Joi.string().valid('entry', 'exit', 'both').optional(),
+  licensePlate: Joi.string().optional(),
+  startDate: Joi.date().optional(),
+  endDate: Joi.date().min(Joi.ref('startDate')).optional(),
+  requestedBy: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).optional()
+});
+
 // Middleware validation functions
 const validateQuery = (schema) => {
   return (req, res, next) => {
@@ -586,3 +710,8 @@ export const validateWorkingHoursParams = validateParams(workingHoursParamsSchem
 export const validateWorkingHoursQuery = validateQuery(workingHoursQuerySchema);
 export const validateDepartment = validate(departmentSchema);
 export const validateUpdateDepartment = validate(updateDepartmentSchema);
+export const validateWorkingHoursRequest = validate(workingHoursRequestSchema);
+export const validateUpdateWorkingHoursRequest = validate(updateWorkingHoursRequestSchema);
+export const validateApprovalRequest = validate(approvalRequestSchema);
+export const validateWorkingHoursRequestParams = validateParams(workingHoursRequestParamsSchema);
+export const validateWorkingHoursRequestQuery = validateQuery(workingHoursRequestQuerySchema);

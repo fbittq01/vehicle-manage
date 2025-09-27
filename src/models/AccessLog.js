@@ -128,6 +128,27 @@ const accessLogSchema = new mongoose.Schema({
     type: Number, // Thời gian lưu trú (phút) - chỉ có khi exit
     min: 0
   },
+  
+  // Metadata bổ sung
+  metadata: {
+    workingHoursRequest: {
+      requestId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'WorkingHoursRequest'
+      },
+      requestedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      reason: String,
+      approvedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      approvedAt: Date
+    }
+  },
+  
   // Thông tin khách (cho xe chưa đăng ký)
   guestInfo: {
     name: {
