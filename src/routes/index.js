@@ -9,6 +9,46 @@ import workingHoursRequestRoutes from './workingHoursRequests.js';
 import departmentRoutes from './departments.js';
 // import simulationRoutes from './simulation.js';
 
+/**
+ * @swagger
+ * tags:
+ *   name: Health Check
+ *   description: API kiểm tra trạng thái hệ thống
+ */
+
+/**
+ * @swagger
+ * /api/health:
+ *   get:
+ *     summary: Kiểm tra trạng thái API
+ *     tags: [Health Check]
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: API đang hoạt động bình thường
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "API is running"
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2025-01-15T10:30:00.000Z"
+ *                 version:
+ *                   type: string
+ *                   example: "1.0.0"
+ *                 pythonServerStatus:
+ *                   type: string
+ *                   example: "disabled"
+ */
+
 const router = express.Router();
 
 // Health check endpoint

@@ -15,6 +15,7 @@ import {
 import {
   generalLimiter
 } from './middleware/rateLimiter.js';
+import { specs, swaggerUi } from './config/swagger.js';
 
 // Load environment variables
 dotenv.config();
@@ -48,6 +49,19 @@ if (process.env.NODE_ENV === 'production') {
 // Rate limiting
 app.use('/api', generalLimiter);
 
+// Swagger Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
+  explorer: true,
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Vehicle Management API Documentation',
+  swaggerOptions: {
+    persistAuthorization: true,
+    displayRequestDuration: true,
+    filter: true,
+    showRequestHeaders: true
+  }
+}));
+
 // Routes
 app.use('/api', routes);
 
@@ -57,7 +71,8 @@ app.get('/', (req, res) => {
     success: true,
     message: 'Hệ thống quản lý phương tiện API',
     version: '1.0.0',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    documentation: '/api-docs'
   });
 });
 
