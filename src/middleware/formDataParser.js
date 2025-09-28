@@ -11,6 +11,26 @@ const upload = multer({
   }
 });
 
+// Middleware để upload Excel file
+export const uploadExcelFile = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit cho Excel file
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-excel' // .xls
+    ];
+    
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Chỉ chấp nhận file Excel (.xlsx, .xls)'), false);
+    }
+  }
+}).single('excelFile');
+
 /**
  * Middleware để xử lý form data và chuyển đổi thành object nested
  */

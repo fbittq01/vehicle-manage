@@ -2,6 +2,7 @@ import express from 'express';
 import authRoutes from './auth.js';
 import userRoutes from './users.js';
 import vehicleRoutes from './vehicles.js';
+import bulkVehicleRoutes from './bulkVehicles.js';
 import accessLogRoutes from './accessLogs.js';
 import cameraRoutes from './cameras.js';
 import workingHoursRoutes from './workingHours.js';
@@ -66,6 +67,7 @@ router.get('/health', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/vehicles', vehicleRoutes);
+router.use('/bulk-vehicles', bulkVehicleRoutes);
 router.use('/access-logs', accessLogRoutes);
 router.use('/cameras', cameraRoutes);
 router.use('/working-hours', workingHoursRoutes);
