@@ -27,7 +27,7 @@ import {
  * @swagger
  * tags:
  *   name: Working Hours Requests
- *   description: API quản lý yêu cầu giờ làm việc
+ *   description: API quản lý yêu cầu ra/vào ngoài giờ hành chính
  */
 
 /**
@@ -41,13 +41,13 @@ import {
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending, approved, rejected]
+ *           enum: [pending, approved, rejected, expired, used]
  *         description: Lọc theo trạng thái
  *       - in: query
  *         name: requestType
  *         schema:
  *           type: string
- *           enum: [leave, overtime, adjustment]
+ *           enum: [entry, exit, both]
  *         description: Lọc theo loại yêu cầu
  *       - in: query
  *         name: startDate
@@ -86,7 +86,7 @@ import {
  *     tags: [Working Hours Requests]
  *     parameters:
  *       - in: query
- *         name: userId
+ *         name: requestedBy
  *         schema:
  *           type: string
  *         description: Lọc theo người dùng
@@ -94,14 +94,19 @@ import {
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending, approved, rejected]
+ *           enum: [pending, approved, rejected, expired, used]
  *         description: Lọc theo trạng thái
  *       - in: query
  *         name: requestType
  *         schema:
  *           type: string
- *           enum: [leave, overtime, adjustment]
+ *           enum: [entry, exit, both]
  *         description: Lọc theo loại yêu cầu
+ *       - in: query
+ *         name: licensePlate
+ *         schema:
+ *           type: string
+ *         description: Lọc theo biển số xe
  *       - in: query
  *         name: startDate
  *         schema:
@@ -138,21 +143,18 @@ import {
  *                   type: boolean
  *                   example: true
  *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/WorkingHoursRequest'
+ *                 pagination:
  *                   type: object
  *                   properties:
- *                     requests:
- *                       type: array
- *                       items:
- *                         $ref: '#/components/schemas/WorkingHoursRequest'
- *                     pagination:
- *                       type: object
- *                       properties:
- *                         page:
- *                           type: integer
- *                         pages:
- *                           type: integer
- *                         total:
- *                           type: integer
+ *                     page:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
  *       403:
  *         description: Chỉ Admin mới có quyền
  *         content:
@@ -160,7 +162,7 @@ import {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  *   post:
- *     summary: Tạo yêu cầu giờ làm việc mới
+ *     summary: Tạo yêu cầu ra/vào ngoài giờ hành chính
  *     tags: [Working Hours Requests]
  *     requestBody:
  *       required: true
@@ -170,36 +172,49 @@ import {
  *             type: object
  *             required:
  *               - requestType
- *               - startDate
- *               - endDate
+ *               - plannedDateTime
+ *               - licensePlate
  *               - reason
  *             properties:
  *               requestType:
  *                 type: string
- *                 enum: [leave, overtime, adjustment]
- *                 example: "leave"
- *               startDate:
+ *                 enum: [entry, exit, both]
+ *                 example: "entry"
+ *                 description: Loại yêu cầu - entry (vào), exit (ra), both (cả vào và ra)
+ *               plannedDateTime:
  *                 type: string
- *                 format: date
- *                 example: "2025-01-20"
- *               endDate:
+ *                 format: date-time
+ *                 example: "2025-01-20T07:30:00.000Z"
+ *                 description: Thời gian dự kiến ra/vào
+ *               plannedEndDateTime:
  *                 type: string
- *                 format: date
- *                 example: "2025-01-21"
+ *                 format: date-time
+ *                 example: "2025-01-20T18:30:00.000Z"
+ *                 description: Thời gian dự kiến kết thúc (bắt buộc khi requestType = both)
+ *               licensePlate:
+ *                 type: string
+ *                 example: "30A-123.45"
+ *                 description: Biển số xe (định dạng 30A-123.45 hoặc 30A12345)
  *               reason:
  *                 type: string
- *                 example: "Nghỉ phép cá nhân"
- *               startTime:
+ *                 minLength: 10
+ *                 maxLength: 500
+ *                 example: "Có việc khẩn cấp cần đến sớm để chuẩn bị họp với khách hàng"
+ *                 description: Lý do yêu cầu (ít nhất 10 ký tự)
+ *               requestedBy:
  *                 type: string
- *                 format: time
- *                 example: "14:00"
- *               endTime:
- *                 type: string
- *                 format: time
- *                 example: "18:00"
- *               notes:
- *                 type: string
- *                 example: "Ghi chú thêm"
+ *                 example: "507f1f77bcf86cd799439011"
+ *                 description: ID người được yêu cầu (chỉ admin có thể sử dụng để tạo thay mặt)
+ *               metadata:
+ *                 type: object
+ *                 properties:
+ *                   emergencyContact:
+ *                     type: string
+ *                     example: "0912345678"
+ *                   vehicleInfo:
+ *                     type: string
+ *                     example: "Honda City màu trắng"
+ *                 description: Thông tin bổ sung
  *     responses:
  *       201:
  *         description: Tạo yêu cầu thành công
@@ -213,9 +228,12 @@ import {
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: "Tạo yêu cầu thành công"
+ *                   example: "Tạo yêu cầu đăng ký thành công"
  *                 data:
- *                   $ref: '#/components/schemas/WorkingHoursRequest'
+ *                   type: object
+ *                   properties:
+ *                     request:
+ *                       $ref: '#/components/schemas/WorkingHoursRequest'
  */
 
 /**
@@ -267,21 +285,31 @@ import {
  *                 data:
  *                   type: object
  *                   properties:
- *                     total:
+ *                     totalRequests:
  *                       type: integer
  *                       example: 150
- *                     pending:
- *                       type: integer
- *                       example: 20
- *                     approved:
- *                       type: integer
- *                       example: 100
- *                     rejected:
- *                       type: integer
- *                       example: 30
- *                     byType:
- *                       type: object
- *                       example: {"leave": 80, "overtime": 50, "adjustment": 20}
+ *                     statusStats:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                             example: "pending"
+ *                           count:
+ *                             type: integer
+ *                             example: 20
+ *                     typeStats:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                             example: "entry"
+ *                           count:
+ *                             type: integer
+ *                             example: 60
  */
 
 /**
@@ -309,7 +337,10 @@ import {
  *                   type: boolean
  *                   example: true
  *                 data:
- *                   $ref: '#/components/schemas/WorkingHoursRequest'
+ *                   type: object
+ *                   properties:
+ *                     request:
+ *                       $ref: '#/components/schemas/WorkingHoursRequest'
  *       404:
  *         description: Không tìm thấy yêu cầu
  *         content:
@@ -333,32 +364,30 @@ import {
  *           schema:
  *             type: object
  *             properties:
- *               requestType:
+ *               plannedDateTime:
  *                 type: string
- *                 enum: [leave, overtime, adjustment]
- *                 example: "overtime"
- *               startDate:
+ *                 format: date-time
+ *                 example: "2025-01-22T08:00:00.000Z"
+ *                 description: Thời gian dự kiến ra/vào mới
+ *               plannedEndDateTime:
  *                 type: string
- *                 format: date
- *                 example: "2025-01-22"
- *               endDate:
- *                 type: string
- *                 format: date
- *                 example: "2025-01-22"
+ *                 format: date-time
+ *                 example: "2025-01-22T18:00:00.000Z"
+ *                 description: Thời gian dự kiến kết thúc mới (cho requestType = both)
  *               reason:
  *                 type: string
- *                 example: "Làm thêm giờ để hoàn thành dự án"
- *               startTime:
- *                 type: string
- *                 format: time
- *                 example: "18:00"
- *               endTime:
- *                 type: string
- *                 format: time
- *                 example: "22:00"
- *               notes:
- *                 type: string
- *                 example: "Cập nhật ghi chú"
+ *                 minLength: 10
+ *                 maxLength: 500
+ *                 example: "Cập nhật lý do: Cần đến sớm để chuẩn bị presentation"
+ *                 description: Lý do yêu cầu mới
+ *               metadata:
+ *                 type: object
+ *                 properties:
+ *                   emergencyContact:
+ *                     type: string
+ *                   vehicleInfo:
+ *                     type: string
+ *                 description: Cập nhật thông tin bổ sung
  *     responses:
  *       200:
  *         description: Cập nhật thành công
@@ -372,11 +401,14 @@ import {
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: "Cập nhật yêu cầu thành công"
+ *                   example: "Cập nhật yêu cầu đăng ký thành công"
  *                 data:
- *                   $ref: '#/components/schemas/WorkingHoursRequest'
+ *                   type: object
+ *                   properties:
+ *                     request:
+ *                       $ref: '#/components/schemas/WorkingHoursRequest'
  *   delete:
- *     summary: Hủy yêu cầu (chỉ khi đang chờ duyệt)
+ *     summary: Hủy yêu cầu (chỉ khi đang chờ duyệt hoặc đã phê duyệt)
  *     tags: [Working Hours Requests]
  *     parameters:
  *       - in: path
@@ -398,7 +430,7 @@ import {
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: "Hủy yêu cầu thành công"
+ *                   example: "Hủy yêu cầu đăng ký thành công"
  */
 
 /**
@@ -420,9 +452,18 @@ import {
  *           schema:
  *             type: object
  *             properties:
- *               approvalNotes:
+ *               approvalNote:
  *                 type: string
- *                 example: "Đã phê duyệt yêu cầu"
+ *                 maxLength: 300
+ *                 example: "Phê duyệt do có việc khẩn cấp"
+ *                 description: Ghi chú phê duyệt
+ *               validHours:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 168
+ *                 default: 24
+ *                 example: 24
+ *                 description: Thời gian hiệu lực (giờ), mặc định 24 giờ
  *     responses:
  *       200:
  *         description: Phê duyệt thành công
@@ -438,7 +479,10 @@ import {
  *                   type: string
  *                   example: "Phê duyệt yêu cầu thành công"
  *                 data:
- *                   $ref: '#/components/schemas/WorkingHoursRequest'
+ *                   type: object
+ *                   properties:
+ *                     request:
+ *                       $ref: '#/components/schemas/WorkingHoursRequest'
  *       403:
  *         description: Chỉ Admin mới có quyền
  *         content:
@@ -466,9 +510,11 @@ import {
  *           schema:
  *             type: object
  *             properties:
- *               rejectionReason:
+ *               approvalNote:
  *                 type: string
- *                 example: "Không đủ điều kiện phê duyệt"
+ *                 maxLength: 300
+ *                 example: "Từ chối do không đủ điều kiện phê duyệt"
+ *                 description: Ghi chú từ chối (sử dụng approvalNote, không phải rejectionReason)
  *     responses:
  *       200:
  *         description: Từ chối thành công
@@ -484,7 +530,10 @@ import {
  *                   type: string
  *                   example: "Từ chối yêu cầu thành công"
  *                 data:
- *                   $ref: '#/components/schemas/WorkingHoursRequest'
+ *                   type: object
+ *                   properties:
+ *                     request:
+ *                       $ref: '#/components/schemas/WorkingHoursRequest'
  *       403:
  *         description: Chỉ Admin mới có quyền
  *         content:
