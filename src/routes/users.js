@@ -18,6 +18,7 @@ import {
   validateRegister,
   validateUpdateUser
 } from '../middleware/validation.js';
+import activityMiddleware from '../middleware/activityMiddleware.js';
 
 /**
  * @swagger
@@ -421,13 +422,13 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // Admin routes
-router.get('/', requireAdmin, getUsers);
-router.get('/stats', requireAdmin, getUserStats);
-router.get('/:id', requireAdmin, getUserById);
-router.post('/', requireAdmin, validateRegister, createUser);
-router.put('/:id', requireAdmin, validateUpdateUser, updateUser);
-router.delete('/:id', requireAdmin, deleteUser);
-router.put('/:id/activate', requireAdmin, activateUser);
-router.put('/:id/reset-password', requireSuperAdmin, resetUserPassword);
+router.get('/', requireAdmin, activityMiddleware('VIEW_USER', 'users'), getUsers);
+router.get('/stats', requireAdmin, activityMiddleware('VIEW_ANALYTICS', 'users'), getUserStats);
+router.get('/:id', requireAdmin, activityMiddleware('VIEW_USER', 'users'), getUserById);
+router.post('/', requireAdmin, validateRegister, activityMiddleware('CREATE_USER', 'users'), createUser);
+router.put('/:id', requireAdmin, validateUpdateUser, activityMiddleware('UPDATE_USER', 'users'), updateUser);
+router.delete('/:id', requireAdmin, activityMiddleware('DELETE_USER', 'users'), deleteUser);
+router.put('/:id/activate', requireAdmin, activityMiddleware('ACTIVATE_USER', 'users'), activateUser);
+router.put('/:id/reset-password', requireSuperAdmin, activityMiddleware('RESET_PASSWORD', 'users'), resetUserPassword);
 
 export default router;

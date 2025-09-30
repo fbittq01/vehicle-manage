@@ -25,6 +25,7 @@ import {
   registerLimiter,
   passwordResetLimiter
 } from '../middleware/rateLimiter.js';
+import activityMiddleware from '../middleware/activityMiddleware.js';
 
 /**
  * @swagger
@@ -402,7 +403,7 @@ import {
 const router = express.Router();
 
 // Public routes
-router.post('/register', registerLimiter, validateRegister, register);
+router.post('/register', registerLimiter, validateRegister, activityMiddleware('CREATE_USER', 'users'), register);
 router.post('/login', loginLimiter, validateLogin, login);
 router.post('/refresh-token', refreshToken);
 
@@ -411,9 +412,9 @@ router.use(authenticateToken); // Tất cả routes dưới đây cần authenti
 
 router.post('/logout', logout);
 router.post('/logout-all', logoutAll);
-router.get('/profile', getProfile);
-router.put('/profile', updateProfile);
-router.put('/change-password', passwordResetLimiter, validateChangePassword, changePassword);
+router.get('/profile', activityMiddleware('VIEW_USER', 'users'), getProfile);
+router.put('/profile', activityMiddleware('UPDATE_PROFILE', 'users'), updateProfile);
+router.put('/change-password', passwordResetLimiter, validateChangePassword, activityMiddleware('CHANGE_PASSWORD', 'users'), changePassword);
 router.get('/verify', verifyToken);
 
 export default router;

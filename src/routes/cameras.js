@@ -15,6 +15,7 @@ import {
 } from '../controllers/cameraController.js';
 import { authenticateToken, authorize } from '../middleware/auth.js';
 import { validateCamera, validateUpdateCamera } from '../middleware/validation.js';
+import activityMiddleware from '../middleware/activityMiddleware.js';
 
 /**
  * @swagger
@@ -427,23 +428,23 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // Routes chung
-router.get('/', getCameras);
-router.get('/statistics', getCameraStatistics);
-router.get('/maintenance', getCamerasNeedingMaintenance);
+router.get('/', activityMiddleware('VIEW_CAMERA', 'cameras'), getCameras);
+router.get('/statistics', activityMiddleware('VIEW_ANALYTICS', 'cameras'), getCameraStatistics);
+router.get('/maintenance', activityMiddleware('VIEW_CAMERA', 'cameras'), getCamerasNeedingMaintenance);
 
 // Routes theo ID
-router.get('/:id', getCameraById);
-router.post('/', validateCamera, authorize(['admin', 'super_admin']), createCamera);
-router.put('/:id', validateUpdateCamera, updateCamera);
-router.delete('/:id', authorize(['admin', 'super_admin']), deleteCamera);
+router.get('/:id', activityMiddleware('VIEW_CAMERA', 'cameras'), getCameraById);
+router.post('/', validateCamera, authorize(['admin', 'super_admin']), activityMiddleware('CREATE_CAMERA', 'cameras'), createCamera);
+router.put('/:id', validateUpdateCamera, activityMiddleware('UPDATE_CAMERA', 'cameras'), updateCamera);
+router.delete('/:id', authorize(['admin', 'super_admin']), activityMiddleware('DELETE_CAMERA', 'cameras'), deleteCamera);
 
 // Routes chức năng đặc biệt
-router.patch('/:id/status', updateCameraStatus);
-router.post('/:id/maintenance/note', addMaintenanceNote);
-router.patch('/:id/maintenance/schedule', authorize(['admin', 'super_admin']), scheduleNextMaintenance);
+router.patch('/:id/status', activityMiddleware('UPDATE_CAMERA', 'cameras'), updateCameraStatus);
+router.post('/:id/maintenance/note', activityMiddleware('UPDATE_CAMERA', 'cameras'), addMaintenanceNote);
+router.patch('/:id/maintenance/schedule', authorize(['admin', 'super_admin']), activityMiddleware('UPDATE_CAMERA', 'cameras'), scheduleNextMaintenance);
 router.patch('/:id/detection', incrementDetection);
 
 // Routes theo cổng
-router.get('/gate/:gateId', getCamerasByGate);
+router.get('/gate/:gateId', activityMiddleware('VIEW_CAMERA', 'cameras'), getCamerasByGate);
 
 export default router;

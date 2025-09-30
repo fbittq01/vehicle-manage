@@ -19,6 +19,7 @@ import {
   validateVehicle,
   validateUpdateVehicle
 } from '../middleware/validation.js';
+import activityMiddleware from '../middleware/activityMiddleware.js';
 
 /**
  * @swagger
@@ -395,16 +396,16 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // Public routes (authenticated users)
-router.get('/my-vehicles', getMyVehicles);
-router.get('/stats', getVehicleStats);
+router.get('/my-vehicles', activityMiddleware('VIEW_VEHICLE', 'vehicles'), getMyVehicles);
+router.get('/stats', activityMiddleware('VIEW_ANALYTICS', 'vehicles'), getVehicleStats);
 
 // CRUD routes
-router.get('/', getVehicles);
-router.get('/:id', getVehicleById);
-router.get('/license-plate/:licensePlate', getVehicleByLicensePlate);
-router.post('/', validateVehicle, createVehicle);
-router.put('/:id', validateUpdateVehicle, updateVehicle);
-router.delete('/:id', deleteVehicle);
-router.put('/:id/activate', activateVehicle);
+router.get('/', activityMiddleware('VIEW_VEHICLE', 'vehicles'), getVehicles);
+router.get('/:id', activityMiddleware('VIEW_VEHICLE', 'vehicles'), getVehicleById);
+router.get('/license-plate/:licensePlate', activityMiddleware('VIEW_VEHICLE', 'vehicles'), getVehicleByLicensePlate);
+router.post('/', validateVehicle, activityMiddleware('CREATE_VEHICLE', 'vehicles'), createVehicle);
+router.put('/:id', validateUpdateVehicle, activityMiddleware('UPDATE_VEHICLE', 'vehicles'), updateVehicle);
+router.delete('/:id', activityMiddleware('DELETE_VEHICLE', 'vehicles'), deleteVehicle);
+router.put('/:id/activate', activityMiddleware('CHANGE_VEHICLE_STATUS', 'vehicles'), activateVehicle);
 
 export default router;
