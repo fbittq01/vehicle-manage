@@ -8,6 +8,7 @@ import {
   requireAdmin
 } from '../middleware/auth.js';
 import { uploadExcelFile } from '../middleware/formDataParser.js';
+import activityMiddleware from '../middleware/activityMiddleware.js';
 
 /**
  * @swagger
@@ -47,6 +48,7 @@ const router = express.Router();
 
 // Route để tải file Excel mẫu
 router.get('/template', 
+  activityMiddleware('EXPORT_DATA', 'vehicles'),
   getVehicleTemplate
 );
 
@@ -260,6 +262,7 @@ router.post('/upload',
       next();
     });
   },
+  activityMiddleware('BULK_CREATE_VEHICLES', 'vehicles'),
   bulkUploadVehicles
 );
 

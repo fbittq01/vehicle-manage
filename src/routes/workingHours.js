@@ -23,6 +23,7 @@ import {
   validateWorkingHoursParams,
   validateWorkingHoursQuery
 } from '../middleware/validation.js';
+import activityMiddleware from '../middleware/activityMiddleware.js';
 
 /**
  * @swagger
@@ -415,18 +416,18 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // Public routes (chỉ cần đăng nhập)
-router.get('/active', getActiveWorkingHours);
-router.get('/check', validateCheckWorkingTime, checkWorkingTime);
-router.get('/requests-stats', getRequestsStats);
+router.get('/active', activityMiddleware('VIEW_WORKING_HOUR', 'working_hours'), getActiveWorkingHours);
+router.get('/check', validateCheckWorkingTime, activityMiddleware('VIEW_WORKING_HOUR', 'working_hours'), checkWorkingTime);
+router.get('/requests-stats', activityMiddleware('VIEW_ANALYTICS', 'working_hours_requests'), getRequestsStats);
 
 // Super admin only routes
 router.use(requireSuperAdmin);
 
-router.get('/', validateWorkingHoursQuery, getWorkingHours);
-router.get('/:id', validateWorkingHoursParams, getWorkingHoursById);
-router.post('/', validateWorkingHours, createWorkingHours);
-router.put('/:id', validateWorkingHoursParams, validateUpdateWorkingHours, updateWorkingHours);
-router.put('/:id/activate', validateWorkingHoursParams, activateWorkingHours);
-router.delete('/:id', validateWorkingHoursParams, deleteWorkingHours);
+router.get('/', validateWorkingHoursQuery, activityMiddleware('VIEW_WORKING_HOUR', 'working_hours'), getWorkingHours);
+router.get('/:id', validateWorkingHoursParams, activityMiddleware('VIEW_WORKING_HOUR', 'working_hours'), getWorkingHoursById);
+router.post('/', validateWorkingHours, activityMiddleware('CREATE_WORKING_HOUR', 'working_hours'), createWorkingHours);
+router.put('/:id', validateWorkingHoursParams, validateUpdateWorkingHours, activityMiddleware('UPDATE_WORKING_HOUR', 'working_hours'), updateWorkingHours);
+router.put('/:id/activate', validateWorkingHoursParams, activityMiddleware('ACTIVATE_WORKING_HOUR', 'working_hours'), activateWorkingHours);
+router.delete('/:id', validateWorkingHoursParams, activityMiddleware('DELETE_WORKING_HOUR', 'working_hours'), deleteWorkingHours);
 
 export default router;

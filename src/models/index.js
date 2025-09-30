@@ -5,6 +5,7 @@ import Camera from './Camera.js';
 import WorkingHours from './WorkingHours.js';
 import WorkingHoursRequest from './WorkingHoursRequest.js';
 import Department from './Department.js';
+import ActivityLog from './ActivityLog.js';
 
 export {
   User,
@@ -13,5 +14,6 @@ export {
   Camera,
   WorkingHours,
   WorkingHoursRequest,
-  Department
+  Department,
+  ActivityLog
 };

@@ -2,6 +2,7 @@ import { User } from '../models/index.js';
 import { generateTokens, verifyRefreshToken } from '../utils/jwt.js';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/response.js';
 import { asyncHandler } from '../middleware/logger.js';
+import ActivityLogger from '../services/activityLogger.js';
 
 // Đăng ký người dùng mới
 export const register = asyncHandler(async (req, res) => {
@@ -49,6 +50,15 @@ export const register = asyncHandler(async (req, res) => {
   });
   await user.save();
 
+  // Log successful login
+  await ActivityLogger.log({
+    userId: user._id,
+    action: 'LOGIN',
+    ipAddress: req.ip || req.connection.remoteAddress || 'unknown',
+    userAgent: req.get('User-Agent') || 'Unknown',
+    status: 'SUCCESS'
+  });
+
   sendSuccessResponse(res, {
     user: user.toJSON(),
     tokens
@@ -63,10 +73,30 @@ export const login = asyncHandler(async (req, res) => {
   const user = await User.findOne({ username }).select('+password');
   
   if (!user || !(await user.comparePassword(password))) {
+    // Log failed login attempt
+    if (user) {
+      await ActivityLogger.log({
+        userId: user._id,
+        action: 'LOGIN',
+        ipAddress: req.ip || req.connection.remoteAddress || 'unknown',
+        userAgent: req.get('User-Agent') || 'Unknown',
+        status: 'FAILED',
+        errorMessage: 'Invalid password'
+      });
+    }
     return sendErrorResponse(res, 'Username hoặc mật khẩu không chính xác', 401);
   }
 
   if (!user.isActive) {
+    // Log failed login due to inactive account
+    await ActivityLogger.log({
+      userId: user._id,
+      action: 'LOGIN',
+      ipAddress: req.ip || req.connection.remoteAddress || 'unknown',
+      userAgent: req.get('User-Agent') || 'Unknown',
+      status: 'FAILED',
+      errorMessage: 'Account deactivated'
+    });
     return sendErrorResponse(res, 'Tài khoản đã bị vô hiệu hóa', 401);
   }
 
@@ -86,6 +116,15 @@ export const login = asyncHandler(async (req, res) => {
   });
 
   await user.save();
+
+  // Log successful login
+  await ActivityLogger.log({
+    userId: user._id,
+    action: 'LOGIN',
+    ipAddress: req.ip || req.connection.remoteAddress || 'unknown',
+    userAgent: req.get('User-Agent') || 'Unknown',
+    status: 'SUCCESS'
+  });
 
   sendSuccessResponse(res, {
     user: user.toJSON(),
@@ -151,6 +190,15 @@ export const logout = asyncHandler(async (req, res) => {
       { $pull: { refreshTokens: { token: refreshToken } } }
     );
   }
+
+  // Log logout activity
+  await ActivityLogger.log({
+    userId: req.user._id,
+    action: 'LOGOUT',
+    ipAddress: req.ip || req.connection.remoteAddress || 'unknown',
+    userAgent: req.get('User-Agent') || 'Unknown',
+    status: 'SUCCESS'
+  });
 
   sendSuccessResponse(res, null, 'Đăng xuất thành công');
 });
