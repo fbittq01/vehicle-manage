@@ -198,7 +198,7 @@ export const deleteDepartment = asyncHandler(async (req, res) => {
   // Kiểm tra có nhân viên không (giả sử có model User tham chiếu đến department)
   const { User } = await import('../models/index.js');
   const employees = await User.countDocuments({ 
-    department: department.name, 
+    department: department.id, 
     isActive: true 
   });
   if (employees > 0) {
