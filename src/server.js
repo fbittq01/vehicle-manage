@@ -30,7 +30,7 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'https://vehicles-manager-fe-79nq.vercel.app/'],
   credentials: true
 }));
 app.options('*', cors());
