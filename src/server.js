@@ -29,14 +29,16 @@ app.use(helmet({
   contentSecurityPolicy: false // Disable default CSP để sử dụng custom CSP cho Swagger
 }));
 
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'https://vehicles-manager-fe-79nq.vercel.app/'],
-  credentials: true
-}));
-app.options('*', cors());
-
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// CORS configuration - Allow all origins
+app.use(cors({
+  origin: true, // Cho phép tất cả origins
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
+}));
 
 // Serve static files từ uploads directory
 app.use('/uploads', express.static('uploads'));
