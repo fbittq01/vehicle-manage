@@ -57,6 +57,7 @@ const activityLogSchema = new mongoose.Schema({
       'CREATE_WORKING_HOUR',
       'UPDATE_WORKING_HOUR',
       'DELETE_WORKING_HOUR',
+      'ACTIVATE_WORKING_HOUR',
       'VIEW_WORKING_HOUR',
       'APPROVE_WORKING_HOUR',
       'REJECT_WORKING_HOUR',
