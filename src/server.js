@@ -36,11 +36,6 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(cors({
-  origin: ['https://vehicles-manager-fe-79nq.vercel.app', 'http://localhost:3000'],
-  credentials: true,
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-}));
 
 // Serve static files từ uploads directory
 app.use('/uploads', express.static('uploads'));
