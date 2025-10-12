@@ -2,49 +2,76 @@ import { User } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '../utils/response.js';
 import { getPaginationParams, createPagination } from '../utils/response.js';
 import { asyncHandler } from '../middleware/logger.js';
+import { createDepartmentFilter, checkResourceAccess, clearDepartmentCache } from '../utils/departmentFilter.js';
+import { getUserStatsByDepartment } from '../utils/departmentStats.js';
 
 // Lấy danh sách tất cả users (admin only)
 export const getUsers = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPaginationParams(req);
   const { role, isActive, search } = req.query;
 
-  // Build query filter
-  const filter = {};
+  // Build base query filter
+  const baseFilter = {};
   
-  if (role) filter.role = role;
-  if (isActive !== undefined) filter.isActive = isActive === 'true';
+  if (role) baseFilter.role = role;
+  if (isActive !== undefined) baseFilter.isActive = isActive === 'true';
   
   if (search) {
-    filter.$or = [
+    baseFilter.$or = [
       { name: { $regex: search, $options: 'i' } },
       { username: { $regex: search, $options: 'i' } },
       { employeeId: { $regex: search, $options: 'i' } }
     ];
   }
 
-  // Execute query
-  const [users, total] = await Promise.all([
-    User.find(filter)
-      .select('-password -refreshTokens')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    User.countDocuments(filter)
-  ]);
+  try {
+    // Tạo department filter
+    const departmentFilter = await createDepartmentFilter(req.user, {
+      ownerField: '_id', // User collection sử dụng _id làm owner
+      departmentField: 'department',
+      allowSelfOnly: req.user.role === 'user' // User chỉ xem thông tin của mình
+    });
 
-  const pagination = createPagination(page, limit, total);
+    const filter = { ...baseFilter, ...departmentFilter };
 
-  sendPaginatedResponse(res, users, pagination, 'Lấy danh sách users thành công');
+    // Execute query
+    const [users, total] = await Promise.all([
+      User.find(filter)
+        .select('-password -refreshTokens')
+        .populate('department', 'name code')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      User.countDocuments(filter)
+    ]);
+
+    const pagination = createPagination(page, limit, total);
+
+    sendPaginatedResponse(res, users, pagination, 'Lấy danh sách users thành công');
+  } catch (error) {
+    if (error.message === 'USER_NO_DEPARTMENT') {
+      return sendErrorResponse(res, 'Bạn chưa được phân công vào phòng ban nào', 403);
+    }
+    throw error;
+  }
 });
 
 // Lấy thông tin user theo ID
 export const getUserById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const user = await User.findById(id).select('-password -refreshTokens');
+  const user = await User.findById(id)
+    .select('-password -refreshTokens')
+    .populate('department', 'name code');
   
   if (!user) {
     return sendErrorResponse(res, 'Không tìm thấy user', 404);
+  }
+
+  // Kiểm tra quyền truy cập
+  const hasAccess = await checkResourceAccess(req.user, user, '_id', 'department');
+  if (!hasAccess) {
+    return sendErrorResponse(res, 'Không có quyền xem thông tin user này', 403);
   }
 
   sendSuccessResponse(res, { user }, 'Lấy thông tin user thành công');
@@ -93,14 +120,15 @@ export const updateUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { name, phone, department, employeeId, role, isActive } = req.body;
 
-  const user = await User.findById(id);
+  const user = await User.findById(id).populate('department', 'name code');
   if (!user) {
     return sendErrorResponse(res, 'Không tìm thấy user', 404);
   }
 
-  // Kiểm tra quyền cập nhật
-  if (req.user.role === 'user' && req.user._id.toString() !== id) {
-    return sendErrorResponse(res, 'Không có quyền cập nhật user khác', 403);
+  // Kiểm tra quyền truy cập
+  const hasAccess = await checkResourceAccess(req.user, user, '_id', 'department');
+  if (!hasAccess) {
+    return sendErrorResponse(res, 'Không có quyền cập nhật user này', 403);
   }
 
   // Chỉ super_admin mới có thể thay đổi role thành admin
@@ -130,6 +158,12 @@ export const updateUser = asyncHandler(async (req, res) => {
     { name, phone, department, employeeId, role, isActive },
     { new: true, runValidators: true }
   ).select('-password -refreshTokens');
+
+  // Clear cache nếu department thay đổi
+  if (department && department !== user.department?.toString()) {
+    clearDepartmentCache(user.department); // Clear cache cũ
+    clearDepartmentCache(department); // Clear cache mới
+  }
 
   sendSuccessResponse(res, { user: updatedUser }, 'Cập nhật user thành công');
 });
@@ -201,63 +235,13 @@ export const resetUserPassword = asyncHandler(async (req, res) => {
 
 // Thống kê users
 export const getUserStats = asyncHandler(async (req, res) => {
-  const stats = await User.aggregate([
-    {
-      $group: {
-        _id: null,
-        totalUsers: { $sum: 1 },
-        activeUsers: {
-          $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] }
-        },
-        inactiveUsers: {
-          $sum: { $cond: [{ $eq: ['$isActive', false] }, 1, 0] }
-        },
-        usersByRole: {
-          $push: {
-            role: '$role',
-            isActive: '$isActive'
-          }
-        }
-      }
-    },
-    {
-      $project: {
-        totalUsers: 1,
-        activeUsers: 1,
-        inactiveUsers: 1,
-        roleStats: {
-          $reduce: {
-            input: '$usersByRole',
-            initialValue: {},
-            in: {
-              $mergeObjects: [
-                '$$value',
-                {
-                  $let: {
-                    vars: {
-                      role: '$$this.role',
-                      key: {
-                        $concat: [
-                          '$$this.role',
-                          { $cond: ['$$this.isActive', '_active', '_inactive'] }
-                        ]
-                      }
-                    },
-                    in: {
-                      $arrayToObject: [[{
-                        k: '$$key',
-                        v: { $add: [{ $ifNull: [{ $getField: '$$key' }, 0] }, 1] }
-                      }]]
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        }
-      }
+  try {
+    const stats = await getUserStatsByDepartment(req.user);
+    sendSuccessResponse(res, stats, 'Lấy thống kê users thành công');
+  } catch (error) {
+    if (error.message === 'USER_NO_DEPARTMENT') {
+      return sendErrorResponse(res, 'Bạn chưa được phân công vào phòng ban nào', 403);
     }
-  ]);
-
-  sendSuccessResponse(res, stats[0] || {}, 'Lấy thống kê users thành công');
+    throw error;
+  }
 });

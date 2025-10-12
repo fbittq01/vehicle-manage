@@ -2,27 +2,43 @@ import { WorkingHours, User } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '../utils/response.js';
 import { getPaginationParams, createPagination } from '../utils/response.js';
 import { asyncHandler } from '../middleware/logger.js';
+import { createDepartmentFilter, checkResourceAccess } from '../utils/departmentFilter.js';
 
 // Lấy danh sách cài đặt giờ làm việc
 export const getWorkingHours = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPaginationParams(req);
   const { isActive } = req.query;
   
-  const filter = {};
-  if (isActive !== undefined) filter.isActive = isActive === 'true';
+  const baseFilter = {};
+  if (isActive !== undefined) baseFilter.isActive = isActive === 'true';
   
-  const [workingHours, total] = await Promise.all([
-    WorkingHours.find(filter)
-      .populate('createdBy', 'name username')
-      .sort({ isActive: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    WorkingHours.countDocuments(filter)
-  ]);
-  
-  const pagination = createPagination(page, limit, total);
-  
-  sendPaginatedResponse(res, workingHours, pagination, 'Lấy danh sách cài đặt giờ làm việc thành công');
+  try {
+    // Tạo department filter
+    const departmentFilter = await createDepartmentFilter(req.user, {
+      ownerField: 'createdBy',
+      allowSelfOnly: false // Admin và user đều xem working hours của department
+    });
+
+    const filter = { ...baseFilter, ...departmentFilter };
+    
+    const [workingHours, total] = await Promise.all([
+      WorkingHours.find(filter)
+        .populate('createdBy', 'name username')
+        .sort({ isActive: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      WorkingHours.countDocuments(filter)
+    ]);
+    
+    const pagination = createPagination(page, limit, total);
+    
+    sendPaginatedResponse(res, workingHours, pagination, 'Lấy danh sách cài đặt giờ làm việc thành công');
+  } catch (error) {
+    if (error.message === 'USER_NO_DEPARTMENT') {
+      return sendErrorResponse(res, 'Bạn chưa được phân công vào phòng ban nào', 403);
+    }
+    throw error;
+  }
 });
 
 // Lấy cài đặt giờ làm việc theo ID
@@ -34,6 +50,12 @@ export const getWorkingHoursById = asyncHandler(async (req, res) => {
   
   if (!workingHours) {
     return sendErrorResponse(res, 'Không tìm thấy cài đặt giờ làm việc', 404);
+  }
+
+  // Kiểm tra quyền truy cập
+  const hasAccess = await checkResourceAccess(req.user, workingHours, 'createdBy');
+  if (!hasAccess) {
+    return sendErrorResponse(res, 'Không có quyền xem cài đặt giờ làm việc này', 403);
   }
   
   sendSuccessResponse(res, { workingHours }, 'Lấy thông tin cài đặt giờ làm việc thành công');
