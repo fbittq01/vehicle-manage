@@ -1,5 +1,7 @@
-import { Camera } from '../models/index.js';
+import { Camera, User } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/response.js';
+import { createDepartmentFilter, checkResourceAccess } from '../utils/departmentFilter.js';
+import { getCameraStatsByDepartment } from '../utils/departmentStats.js';
 
 // Lấy danh sách camera
 export const getCameras = async (req, res) => {
@@ -16,24 +18,32 @@ export const getCameras = async (req, res) => {
       search
     } = req.query;
 
-    // Xây dựng filter
-    const filter = {};
+    // Xây dựng base filter
+    const baseFilter = {};
     
-    if (gateId) filter['location.gateId'] = gateId;
-    if (position) filter['location.position'] = position;
-    if (isActive !== undefined) filter['status.isActive'] = isActive === 'true';
-    if (isOnline !== undefined) filter['status.isOnline'] = isOnline === 'true';
-    if (connectionStatus) filter['status.connectionStatus'] = connectionStatus;
-    if (managedBy) filter.managedBy = managedBy;
+    if (gateId) baseFilter['location.gateId'] = gateId;
+    if (position) baseFilter['location.position'] = position;
+    if (isActive !== undefined) baseFilter['status.isActive'] = isActive === 'true';
+    if (isOnline !== undefined) baseFilter['status.isOnline'] = isOnline === 'true';
+    if (connectionStatus) baseFilter['status.connectionStatus'] = connectionStatus;
+    if (managedBy) baseFilter.managedBy = managedBy;
     
     // Search theo tên hoặc cameraId
     if (search) {
-      filter.$or = [
+      baseFilter.$or = [
         { name: { $regex: search, $options: 'i' } },
         { cameraId: { $regex: search, $options: 'i' } },
         { 'location.gateName': { $regex: search, $options: 'i' } }
       ];
     }
+
+    // Tạo department filter
+    const departmentFilter = await createDepartmentFilter(req.user, {
+      ownerField: 'managedBy',
+      allowSelfOnly: false
+    });
+
+    const filter = { ...baseFilter, ...departmentFilter };
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
@@ -56,6 +66,9 @@ export const getCameras = async (req, res) => {
     }, 'Lấy danh sách camera thành công');
 
   } catch (error) {
+    if (error.message === 'USER_NO_DEPARTMENT') {
+      return sendErrorResponse(res, 'Bạn chưa được phân công vào phòng ban nào', 403);
+    }
     console.error('Lỗi khi lấy danh sách camera:', error);
     return sendErrorResponse(res, 'Lỗi server khi lấy danh sách camera', 500);
   }
@@ -72,6 +85,12 @@ export const getCameraById = async (req, res) => {
 
     if (!camera) {
       return sendErrorResponse(res, 'Không tìm thấy camera', 404);
+    }
+
+    // Kiểm tra quyền truy cập
+    const hasAccess = await checkResourceAccess(req.user, camera, 'managedBy');
+    if (!hasAccess) {
+      return sendErrorResponse(res, 'Không có quyền xem camera này', 403);
     }
 
     return sendSuccessResponse(res, camera, 'Lấy thông tin camera thành công');
@@ -327,11 +346,12 @@ export const getCamerasNeedingMaintenance = async (req, res) => {
 // Lấy thống kê camera
 export const getCameraStatistics = async (req, res) => {
   try {
-    const statistics = await Camera.getStatistics();
-
-    return sendSuccessResponse(res, statistics[0] || {}, 'Lấy thống kê camera thành công');
-
+    const statistics = await getCameraStatsByDepartment(req.user);
+    return sendSuccessResponse(res, statistics, 'Lấy thống kê camera thành công');
   } catch (error) {
+    if (error.message === 'USER_NO_DEPARTMENT') {
+      return sendErrorResponse(res, 'Bạn chưa được phân công vào phòng ban nào', 403);
+    }
     console.error('Lỗi khi lấy thống kê camera:', error);
     return sendErrorResponse(res, 'Lỗi server khi lấy thống kê camera', 500);
   }

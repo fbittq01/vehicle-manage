@@ -3,46 +3,58 @@ import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '.
 import { getPaginationParams, createPagination } from '../utils/response.js';
 import { normalizeLicensePlate, validateVietnameseLicensePlate } from '../utils/licensePlate.js';
 import { asyncHandler } from '../middleware/logger.js';
+import { createDepartmentFilter, checkResourceAccess } from '../utils/departmentFilter.js';
+import { getVehicleStatsByDepartment } from '../utils/departmentStats.js';
 
 // Lấy danh sách vehicles
 export const getVehicles = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPaginationParams(req);
   const { vehicleType, isActive, search, owner } = req.query;
 
-  // Build query filter
-  const filter = {};
+  // Build base query filter
+  const baseFilter = {};
   
-  if (vehicleType) filter.vehicleType = vehicleType;
-  if (isActive !== undefined) filter.isActive = isActive === 'true';
-  if (owner) filter.owner = owner;
+  if (vehicleType) baseFilter.vehicleType = vehicleType;
+  if (isActive !== undefined) baseFilter.isActive = isActive === 'true';
+  if (owner) baseFilter.owner = owner;
   
   if (search) {
     const normalizedSearch = normalizeLicensePlate(search);
-    filter.$or = [
+    baseFilter.$or = [
       { licensePlate: { $regex: normalizedSearch, $options: 'i' } },
       { name: { $regex: search, $options: 'i' } },
       { color: { $regex: search, $options: 'i' } }
     ];
   }
 
-  // Nếu là user thường, chỉ xem được xe của mình
-  if (req.user.role === 'user') {
-    filter.owner = req.user._id;
+  try {
+    // Tạo department filter
+    const departmentFilter = await createDepartmentFilter(req.user, {
+      ownerField: 'owner',
+      allowSelfOnly: true
+    });
+
+    const filter = { ...baseFilter, ...departmentFilter };
+
+    // Execute query
+    const [vehicles, total] = await Promise.all([
+      Vehicle.find(filter)
+        .populate('owner', 'name username phone department')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Vehicle.countDocuments(filter)
+    ]);
+
+    const pagination = createPagination(page, limit, total);
+
+    sendPaginatedResponse(res, vehicles, pagination, 'Lấy danh sách vehicles thành công');
+  } catch (error) {
+    if (error.message === 'USER_NO_DEPARTMENT') {
+      return sendErrorResponse(res, 'Bạn chưa được phân công vào phòng ban nào', 403);
+    }
+    throw error;
   }
-
-  // Execute query
-  const [vehicles, total] = await Promise.all([
-    Vehicle.find(filter)
-      .populate('owner', 'name username phone department')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    Vehicle.countDocuments(filter)
-  ]);
-
-  const pagination = createPagination(page, limit, total);
-
-  sendPaginatedResponse(res, vehicles, pagination, 'Lấy danh sách vehicles thành công');
 });
 
 // Lấy thông tin vehicle theo ID
@@ -56,7 +68,8 @@ export const getVehicleById = asyncHandler(async (req, res) => {
   }
 
   // Kiểm tra quyền truy cập
-  if (req.user.role === 'user' && vehicle.owner._id.toString() !== req.user._id.toString()) {
+  const hasAccess = await checkResourceAccess(req.user, vehicle, 'owner');
+  if (!hasAccess) {
     return sendErrorResponse(res, 'Không có quyền xem vehicle này', 403);
   }
 
@@ -263,29 +276,13 @@ export const getMyVehicles = asyncHandler(async (req, res) => {
 
 // Thống kê vehicles
 export const getVehicleStats = asyncHandler(async (req, res) => {
-  const filter = req.user.role === 'user' ? { owner: req.user._id } : {};
-
-  const stats = await Vehicle.aggregate([
-    { $match: filter },
-    {
-      $group: {
-        _id: null,
-        totalVehicles: { $sum: 1 },
-        activeVehicles: {
-          $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] }
-        },
-        inactiveVehicles: {
-          $sum: { $cond: [{ $eq: ['$isActive', false] }, 1, 0] }
-        },
-        vehiclesByType: {
-          $push: {
-            type: '$vehicleType',
-            isActive: '$isActive'
-          }
-        }
-      }
+  try {
+    const stats = await getVehicleStatsByDepartment(req.user);
+    sendSuccessResponse(res, stats, 'Lấy thống kê vehicles thành công');
+  } catch (error) {
+    if (error.message === 'USER_NO_DEPARTMENT') {
+      return sendErrorResponse(res, 'Bạn chưa được phân công vào phòng ban nào', 403);
     }
-  ]);
-
-  sendSuccessResponse(res, stats[0] || {}, 'Lấy thống kê vehicles thành công');
+    throw error;
+  }
 });

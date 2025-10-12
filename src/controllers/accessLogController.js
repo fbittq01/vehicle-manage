@@ -5,6 +5,7 @@ import { normalizeLicensePlate } from '../utils/licensePlate.js';
 import { asyncHandler } from '../middleware/logger.js';
 import { processRecognitionImages } from '../utils/fileStorage.js';
 import { checkAndApplyRequest } from './workingHoursRequestController.js';
+import { createDepartmentFilter, checkResourceAccess } from '../utils/departmentFilter.js';
 
 // Lấy danh sách access logs
 export const getAccessLogs = asyncHandler(async (req, res) => {
@@ -19,44 +20,56 @@ export const getAccessLogs = asyncHandler(async (req, res) => {
     isVehicleRegistered 
   } = req.query;
 
-  // Build query filter
-  const filter = {};
+  // Build base query filter
+  const baseFilter = {};
   
-  if (action) filter.action = action;
-  if (verificationStatus) filter.verificationStatus = verificationStatus;
-  if (gateId) filter.gateId = gateId;
-  if (isVehicleRegistered !== undefined) filter.isVehicleRegistered = isVehicleRegistered === 'true';
+  if (action) baseFilter.action = action;
+  if (verificationStatus) baseFilter.verificationStatus = verificationStatus;
+  if (gateId) baseFilter.gateId = gateId;
+  if (isVehicleRegistered !== undefined) baseFilter.isVehicleRegistered = isVehicleRegistered === 'true';
   
   if (licensePlate) {
-    filter.licensePlate = normalizeLicensePlate(licensePlate);
+    baseFilter.licensePlate = normalizeLicensePlate(licensePlate);
   }
   
   if (startDate || endDate) {
-    filter.createdAt = {};
-    if (startDate) filter.createdAt.$gte = new Date(startDate);
-    if (endDate) filter.createdAt.$lte = new Date(endDate);
+    baseFilter.createdAt = {};
+    if (startDate) baseFilter.createdAt.$gte = new Date(startDate);
+    if (endDate) baseFilter.createdAt.$lte = new Date(endDate);
   }
 
-  // Nếu là user thường, chỉ xem logs của xe mình
-  if (req.user.role === 'user') {
-    filter.owner = req.user._id;
+  try {
+    // Tạo department filter
+    const departmentFilter = await createDepartmentFilter(req.user, {
+      ownerField: 'owner',
+      allowSelfOnly: true
+    });
+
+    const filter = { ...baseFilter, ...departmentFilter };
+    console.log("🚀 ~ filter:", filter)
+
+    // Execute query
+    const [logs, total] = await Promise.all([
+      AccessLog.find(filter)
+        .populate('vehicle', 'licensePlate vehicleType name color')
+        .populate('owner', 'name username phone')
+        .populate('verifiedBy', 'name username')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      AccessLog.countDocuments(filter)
+    ]);
+    console.log("🚀 ~ logs:", logs)
+
+    const pagination = createPagination(page, limit, total);
+
+    sendPaginatedResponse(res, logs, pagination, 'Lấy danh sách access logs thành công');
+  } catch (error) {
+    if (error.message === 'USER_NO_DEPARTMENT') {
+      return sendErrorResponse(res, 'Bạn chưa được phân công vào phòng ban nào', 403);
+    }
+    throw error;
   }
-
-  // Execute query
-  const [logs, total] = await Promise.all([
-    AccessLog.find(filter)
-      .populate('vehicle', 'licensePlate vehicleType name color')
-      .populate('owner', 'name username phone')
-      .populate('verifiedBy', 'name username')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    AccessLog.countDocuments(filter)
-  ]);
-
-  const pagination = createPagination(page, limit, total);
-
-  sendPaginatedResponse(res, logs, pagination, 'Lấy danh sách access logs thành công');
 });
 
 // Lấy access log theo ID
@@ -73,8 +86,9 @@ export const getAccessLogById = asyncHandler(async (req, res) => {
   }
 
   // Kiểm tra quyền truy cập
-  if (req.user.role === 'user' && log.owner?._id.toString() !== req.user._id.toString()) {
-    return sendErrorResponse(res, 'Không có quyền xem log này', 403);
+  const hasAccess = await checkResourceAccess(req.user, log, 'owner');
+  if (!hasAccess) {
+    return sendErrorResponse(res, 'Không có quyền xem access log này', 403);
   }
 
   sendSuccessResponse(res, { log }, 'Lấy thông tin access log thành công');
