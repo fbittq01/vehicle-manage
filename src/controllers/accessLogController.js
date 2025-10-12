@@ -1,6 +1,6 @@
 import { AccessLog, Vehicle, User, WorkingHours, WorkingHoursRequest } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '../utils/response.js';
-import { getPaginationParams, createPagination } from '../utils/response.js';
+import { getPaginationParams, createPagination, getStartOfDay, getEndOfDay } from '../utils/response.js';
 import { normalizeLicensePlate } from '../utils/licensePlate.js';
 import { asyncHandler } from '../middleware/logger.js';
 import { processRecognitionImages } from '../utils/fileStorage.js';
@@ -34,8 +34,8 @@ export const getAccessLogs = asyncHandler(async (req, res) => {
   
   if (startDate || endDate) {
     baseFilter.createdAt = {};
-    if (startDate) baseFilter.createdAt.$gte = new Date(startDate);
-    if (endDate) baseFilter.createdAt.$lte = new Date(endDate);
+    if (startDate) baseFilter.createdAt.$gte = getStartOfDay(startDate);
+    if (endDate) baseFilter.createdAt.$lte = getEndOfDay(endDate);
   }
 
   try {
@@ -46,7 +46,6 @@ export const getAccessLogs = asyncHandler(async (req, res) => {
     });
 
     const filter = { ...baseFilter, ...departmentFilter };
-    console.log("🚀 ~ filter:", filter)
 
     // Execute query
     const [logs, total] = await Promise.all([
@@ -59,7 +58,6 @@ export const getAccessLogs = asyncHandler(async (req, res) => {
         .limit(limit),
       AccessLog.countDocuments(filter)
     ]);
-    console.log("🚀 ~ logs:", logs)
 
     const pagination = createPagination(page, limit, total);
 
@@ -333,8 +331,8 @@ export const getLogsByDateRange = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Vui lòng cung cấp startDate và endDate', 400);
   }
 
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const start = getStartOfDay(startDate);
+  const end = getEndOfDay(endDate);
 
   // Validate date range
   if (start >= end) {
@@ -438,8 +436,8 @@ export const getReports = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Vui lòng cung cấp startDate và endDate', 400);
   }
 
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const start = getStartOfDay(startDate);
+  const end = getEndOfDay(endDate);
 
   // Group format based on groupBy parameter
   let groupFormat;
@@ -530,8 +528,8 @@ export const getWorkingHoursStats = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Vui lòng cung cấp thời gian bắt đầu và thời gian kết thúc', 400);
   }
 
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const start = getStartOfDay(startDate);
+  const end = getEndOfDay(endDate);
 
   if (start >= end) {
     return sendErrorResponse(res, 'Thời gian bắt đầu phải nhỏ hơn thời gian kết thúc', 400);
@@ -703,8 +701,8 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Vui lòng cung cấp thời gian bắt đầu và thời gian kết thúc', 400);
   }
 
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const start = getStartOfDay(startDate);
+  const end = getEndOfDay(endDate);
 
   // Lấy cài đặt giờ làm việc active
   const workingHours = await WorkingHours.getActiveWorkingHours();
@@ -825,8 +823,8 @@ export const getUserWorkingHoursReport = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Không có quyền xem báo cáo của người khác', 403);
   }
 
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const start = getStartOfDay(startDate);
+  const end = getEndOfDay(endDate);
 
   // Lấy thông tin user
   const user = await User.findById(userId);

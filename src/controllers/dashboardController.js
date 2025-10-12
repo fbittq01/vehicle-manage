@@ -1,4 +1,4 @@
-import { sendSuccessResponse, sendErrorResponse } from '../utils/response.js';
+import { sendSuccessResponse, sendErrorResponse, getStartOfDay, getEndOfDay } from '../utils/response.js';
 import { asyncHandler } from '../middleware/logger.js';
 import { 
   getUserStatsByDepartment, 
@@ -33,8 +33,8 @@ export const getDashboardOverview = asyncHandler(async (req, res) => {
         department: req.user.role === 'super_admin' ? 'ALL_DEPARTMENTS' : req.user.department,
         generatedAt: new Date(),
         dateRange: {
-          startDate: startDate ? new Date(startDate) : null,
-          endDate: endDate ? new Date(endDate) : null
+          startDate: startDate ? getStartOfDay(startDate) : null,
+          endDate: endDate ? getEndOfDay(endDate) : null
         }
       }
     };

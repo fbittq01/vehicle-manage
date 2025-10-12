@@ -1,6 +1,6 @@
 import { WorkingHoursRequest, User, Vehicle, AccessLog } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '../utils/response.js';
-import { getPaginationParams, createPagination } from '../utils/response.js';
+import { getPaginationParams, createPagination, getStartOfDay, getEndOfDay } from '../utils/response.js';
 import { normalizeLicensePlate } from '../utils/licensePlate.js';
 import { asyncHandler } from '../middleware/logger.js';
 
@@ -26,8 +26,8 @@ export const getWorkingHoursRequests = asyncHandler(async (req, res) => {
   
   if (startDate || endDate) {
     filter.plannedDateTime = {};
-    if (startDate) filter.plannedDateTime.$gte = new Date(startDate);
-    if (endDate) filter.plannedDateTime.$lte = new Date(endDate);
+    if (startDate) filter.plannedDateTime.$gte = getStartOfDay(startDate);
+    if (endDate) filter.plannedDateTime.$lte = getEndOfDay(endDate);
   }
 
   // Nếu là user thường, chỉ xem yêu cầu của mình
@@ -356,8 +356,8 @@ export const getRequestsStats = asyncHandler(async (req, res) => {
   const filter = {};
   if (startDate || endDate) {
     filter.createdAt = {};
-    if (startDate) filter.createdAt.$gte = new Date(startDate);
-    if (endDate) filter.createdAt.$lte = new Date(endDate);
+    if (startDate) filter.createdAt.$gte = getStartOfDay(startDate);
+    if (endDate) filter.createdAt.$lte = getEndOfDay(endDate);
   }
 
   const stats = await WorkingHoursRequest.aggregate([
