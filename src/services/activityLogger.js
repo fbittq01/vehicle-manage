@@ -1,4 +1,5 @@
 import ActivityLog from '../models/ActivityLog.js';
+import { getStartOfDay, getEndOfDay } from '../utils/response.js';
 
 class ActivityLogger {
   static async log({
@@ -221,8 +222,8 @@ class ActivityLogger {
       
       if (startDate || endDate) {
         query.timestamp = {};
-        if (startDate) query.timestamp.$gte = new Date(startDate);
-        if (endDate) query.timestamp.$lte = new Date(endDate);
+        if (startDate) query.timestamp.$gte = getStartOfDay(startDate);
+        if (endDate) query.timestamp.$lte = getEndOfDay(endDate);
       }
 
       const logs = await ActivityLog.find(query)
@@ -260,8 +261,8 @@ class ActivityLogger {
       const matchQuery = {};
       if (startDate || endDate) {
         matchQuery.timestamp = {};
-        if (startDate) matchQuery.timestamp.$gte = new Date(startDate);
-        if (endDate) matchQuery.timestamp.$lte = new Date(endDate);
+        if (startDate) matchQuery.timestamp.$gte = getStartOfDay(startDate);
+        if (endDate) matchQuery.timestamp.$lte = getEndOfDay(endDate);
       }
 
       // Action statistics
@@ -348,8 +349,8 @@ class ActivityLogger {
       const matchQuery = { resource };
       if (startDate || endDate) {
         matchQuery.timestamp = {};
-        if (startDate) matchQuery.timestamp.$gte = new Date(startDate);
-        if (endDate) matchQuery.timestamp.$lte = new Date(endDate);
+        if (startDate) matchQuery.timestamp.$gte = getStartOfDay(startDate);
+        if (endDate) matchQuery.timestamp.$lte = getEndOfDay(endDate);
       }
 
       const activities = await ActivityLog.find(matchQuery)

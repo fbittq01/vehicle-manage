@@ -1,5 +1,6 @@
 import { User, Vehicle, AccessLog, WorkingHours, Camera } from '../models/index.js';
 import { getDepartmentUserIds } from './departmentFilter.js';
+import { getStartOfDay, getEndOfDay } from './response.js';
 
 /**
  * Tạo pipeline aggregation có department filter
@@ -74,8 +75,8 @@ export const getAccessLogStatsByDepartment = async (user, startDate, endDate) =>
   const dateFilter = {};
   if (startDate || endDate) {
     dateFilter.createdAt = {};
-    if (startDate) dateFilter.createdAt.$gte = new Date(startDate);
-    if (endDate) dateFilter.createdAt.$lte = new Date(endDate);
+    if (startDate) dateFilter.createdAt.$gte = getStartOfDay(startDate);
+    if (endDate) dateFilter.createdAt.$lte = getEndOfDay(endDate);
   }
 
   const pipeline = await createDepartmentAggregationPipeline(user, 'owner', [
