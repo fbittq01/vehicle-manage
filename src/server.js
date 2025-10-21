@@ -43,6 +43,11 @@ app.use(cors({
 // Serve static files từ uploads directory
 app.use('/uploads', express.static('uploads'));
 
+// Serve static files cho test client (chỉ trong development)
+if (process.env.NODE_ENV !== 'production') {
+  app.use(express.static('.'));
+}
+
 // Logging middleware
 if (process.env.NODE_ENV === 'production') {
   app.use(prodLogger);
@@ -68,9 +73,17 @@ app.get('/', (req, res) => {
     message: 'Hệ thống quản lý phương tiện API',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
-    documentation: '/api-docs'
+    documentation: '/api-docs',
+    videoTestClient: '/video_test_client.html'
   });
 });
+
+// Serve video test client (chỉ trong development)
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/test-client', (req, res) => {
+    res.sendFile(path.join(process.cwd(), 'video_test_client.html'));
+  });
+}
 
 // Error handling middleware
 app.use(notFoundHandler);

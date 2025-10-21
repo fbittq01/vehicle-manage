@@ -4,12 +4,41 @@
 export const normalizeLicensePlate = (licensePlate) => {
   if (!licensePlate) return '';
   
-  return licensePlate
+  // Làm sạch input
+  let normalized = licensePlate
     .toString()
     .toUpperCase()
     .trim()
     .replace(/\s+/g, '') // Loại bỏ khoảng trắng
     .replace(/[^0-9A-Z.-]/g, ''); // Chỉ giữ lại số, chữ, dấu chấm và gạch ngang
+  
+  // Nếu đã có định dạng chuẩn thì trả về luôn
+  if (normalized.includes('-') && normalized.includes('.')) {
+    return normalized;
+  }
+  
+  // Loại bỏ dấu gạch ngang và chấm hiện có để format lại
+  const cleanLicensePlate = normalized.replace(/[-.]/, '');
+  
+  // Thêm định dạng cho các loại biển số xe
+  
+  // Ô tô con cũ: 29A12345 -> 29A-123.45
+  if (/^[0-9]{2}[A-Z]{1}[0-9]{5}$/.test(cleanLicensePlate)) {
+    const match = cleanLicensePlate.match(/^([0-9]{2}[A-Z]{1})([0-9]{3})([0-9]{2})$/);
+    if (match) {
+      return `${match[1]}-${match[2]}.${match[3]}`;
+    }
+  }
+  
+  // Ô tô con mới: 29AB123456 -> 29AB-1234.56
+  if (/^[0-9]{2}[A-Z]{2}[0-9]{6}$/.test(cleanLicensePlate)) {
+    const match = cleanLicensePlate.match(/^([0-9]{2}[A-Z]{2})([0-9]{4})([0-9]{2})$/);
+    if (match) {
+      return `${match[1]}-${match[2]}.${match[3]}`;
+    }
+  }
+  // Nếu không khớp pattern nào thì trả về bản gốc đã làm sạch
+  return normalized;
 };
 
 // Validate định dạng biển số xe Việt Nam
@@ -18,10 +47,23 @@ export const validateVietnameseLicensePlate = (licensePlate) => {
   
   // Các pattern cho biển số xe Việt Nam
   const patterns = [
-    /^[0-9]{2}[A-Z]{1,2}-[0-9]{3,4}\.[0-9]{2}$/, // 29A-123.45
-    /^[0-9]{2}[A-Z]{1,2}[0-9]{3,4}$/, // 29A1234 (xe máy)
-    /^[0-9]{2}[A-Z]{1}-[0-9]{3}\.[0-9]{2}$/, // 29A-123.45 (ô tô)
-    /^[0-9]{2}[A-Z]{2}-[0-9]{4}\.[0-9]{2}$/, // 29AB-1234.56 (ô tô mới)
+    // Ô tô con cũ: 29A-123.45
+    /^[0-9]{2}[A-Z]{1}-[0-9]{3}\.[0-9]{2}$/,
+    // Ô tô con mới: 29AB-1234.56  
+    /^[0-9]{2}[A-Z]{2}-[0-9]{4}\.[0-9]{2}$/,
+    // Xe máy cũ: 29A1-1234, 29A-1234
+    /^[0-9]{2}[A-Z]{1}[0-9]{1}-[0-9]{4}$/,
+    /^[0-9]{2}[A-Z]{1}-[0-9]{4}$/,
+    // Xe máy mới: 29A11234, 30F91760 (2 số + 1 chữ + 5 số)
+    /^[0-9]{2}[A-Z]{1}[0-9]{5}$/,
+    // Xe máy: 29A1234 (2 số + 1 chữ + 4 số)
+    /^[0-9]{2}[A-Z]{1}[0-9]{4}$/,
+    // Xe tải, container: 29C-12345
+    /^[0-9]{2}[A-Z]{1}-[0-9]{5}$/,
+    // Xe buýt: 29B-12345
+    /^[0-9]{2}[A-Z]{1}-[0-9]{5}$/,
+    // Format có dấu gạch ngang: 29A-123.45
+    /^[0-9]{2}[A-Z]{1,2}-[0-9]{3,5}(\.[0-9]{2})?$/,
   ];
   
   return patterns.some(pattern => pattern.test(normalized));
@@ -88,9 +130,18 @@ export const formatLicensePlateDisplay = (licensePlate) => {
   const normalized = normalizeLicensePlate(licensePlate);
   
   // Thêm dấu gạch ngang và chấm cho dễ đọc nếu chưa có
-  if (/^[0-9]{2}[A-Z]{1,2}[0-9]{3,4}$/.test(normalized)) {
-    // Format cho xe máy: 29A1234 -> 29A-1234
-    const match = normalized.match(/^([0-9]{2}[A-Z]{1,2})([0-9]{3,4})$/);
+  
+  // Xe máy 5 số: 30F91760 -> 30F-91760
+  if (/^[0-9]{2}[A-Z]{1}[0-9]{5}$/.test(normalized)) {
+    const match = normalized.match(/^([0-9]{2}[A-Z]{1})([0-9]{5})$/);
+    if (match) {
+      return `${match[1]}-${match[2]}`;
+    }
+  }
+  
+  // Xe máy 4 số: 29A1234 -> 29A-1234
+  if (/^[0-9]{2}[A-Z]{1}[0-9]{4}$/.test(normalized)) {
+    const match = normalized.match(/^([0-9]{2}[A-Z]{1})([0-9]{4})$/);
     if (match) {
       return `${match[1]}-${match[2]}`;
     }

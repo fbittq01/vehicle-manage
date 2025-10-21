@@ -2,6 +2,7 @@ import { Camera, User } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/response.js';
 import { createDepartmentFilter, checkResourceAccess } from '../utils/departmentFilter.js';
 import { getCameraStatsByDepartment } from '../utils/departmentStats.js';
+import socketService from '../socket/socketService.js';
 
 // Lấy danh sách camera
 export const getCameras = async (req, res) => {
@@ -375,5 +376,321 @@ export const incrementDetection = async (req, res) => {
   } catch (error) {
     console.error('Lỗi khi cập nhật thống kê phát hiện:', error);
     return sendErrorResponse(res, 'Lỗi server khi cập nhật thống kê phát hiện', 500);
+  }
+};
+
+// ============= VIDEO STREAMING FUNCTIONS =============
+
+// Lấy danh sách cameras có thể stream
+export const getStreamableCameras = async (req, res) => {
+  try {
+    const { quality } = req.query;
+    
+    // Tạo department filter
+    const departmentFilter = await createDepartmentFilter(req.user, {
+      ownerField: 'managedBy',
+      allowSelfOnly: false
+    });
+
+    const filter = {
+      'status.isActive': true,
+      'streaming.enabled': true,
+      ...departmentFilter
+    };
+
+    const cameras = await Camera.find(filter)
+      .populate('managedBy', 'name username')
+      .select('name description location technical streaming status managedBy');
+
+    return sendSuccessResponse(res, cameras, 'Danh sách cameras streaming');
+  } catch (error) {
+    console.error('Error getting streamable cameras:', error);
+    return sendErrorResponse(res, 'Lỗi server khi lấy danh sách cameras', 500);
+  }
+};
+
+// Bắt đầu stream từ camera
+export const startCameraStream = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quality = 'medium' } = req.body;
+
+    const camera = await Camera.findById(id);
+    if (!camera) {
+      return sendErrorResponse(res, 'Camera không tồn tại', 404);
+    }
+
+    // Kiểm tra quyền truy cập
+    const hasAccess = await checkResourceAccess(req.user, camera, 'managedBy');
+    if (!hasAccess) {
+      return sendErrorResponse(res, 'Không có quyền truy cập camera này', 403);
+    }
+
+    if (!camera.status.isActive || !camera.streaming.enabled) {
+      return sendErrorResponse(res, 'Camera không thể stream', 400);
+    }
+
+    if (camera.streaming.isStreaming) {
+      return sendErrorResponse(res, 'Camera đã đang stream', 400);
+    }
+
+    // Gửi command tới Python server
+    const success = socketService.sendToPythonServer({
+      type: 'start_stream',
+      data: {
+        cameraId: camera._id.toString(),
+        streamUrl: camera.technical.streamUrl,
+        quality,
+        requestedBy: req.user._id.toString()
+      }
+    });
+
+    if (!success) {
+      return sendErrorResponse(res, 'Python server không khả dụng', 503);
+    }
+
+    // Cập nhật trạng thái camera
+    camera.streaming.isStreaming = true;
+    camera.streaming.lastStreamStarted = new Date();
+    camera.streaming.quality = quality;
+    await camera.save();
+
+    return sendSuccessResponse(res, {
+      cameraId: camera._id,
+      streamStarted: true,
+      quality
+    }, 'Stream đã được bắt đầu');
+
+  } catch (error) {
+    console.error('Error starting camera stream:', error);
+    return sendErrorResponse(res, 'Lỗi server khi bắt đầu stream', 500);
+  }
+};
+
+// Dừng stream từ camera
+export const stopCameraStream = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const camera = await Camera.findById(id);
+    if (!camera) {
+      return sendErrorResponse(res, 'Camera không tồn tại', 404);
+    }
+
+    // Kiểm tra quyền truy cập
+    const hasAccess = await checkResourceAccess(req.user, camera, 'managedBy');
+    if (!hasAccess) {
+      return sendErrorResponse(res, 'Không có quyền truy cập camera này', 403);
+    }
+
+    // Gửi command tới Python server
+    socketService.sendToPythonServer({
+      type: 'stop_stream',
+      data: {
+        cameraId: camera._id.toString(),
+        requestedBy: req.user._id.toString()
+      }
+    });
+
+    // Cập nhật trạng thái camera
+    camera.streaming.isStreaming = false;
+    camera.streaming.lastStreamStopped = new Date();
+    await camera.save();
+
+    return sendSuccessResponse(res, {
+      cameraId: camera._id,
+      streamStopped: true
+    }, 'Stream đã được dừng');
+
+  } catch (error) {
+    console.error('Error stopping camera stream:', error);
+    return sendErrorResponse(res, 'Lỗi server khi dừng stream', 500);
+  }
+};
+
+// Điều khiển camera (PTZ)
+export const controlCamera = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { command, value } = req.body;
+
+    const validCommands = ['pan_left', 'pan_right', 'tilt_up', 'tilt_down', 'zoom_in', 'zoom_out', 'preset'];
+
+    if (!validCommands.includes(command)) {
+      return sendErrorResponse(res, 'Command không hợp lệ', 400);
+    }
+
+    const camera = await Camera.findById(id);
+    if (!camera) {
+      return sendErrorResponse(res, 'Camera không tồn tại', 404);
+    }
+
+    // Kiểm tra quyền truy cập (chỉ admin hoặc người quản lý camera)
+    const hasAccess = await checkResourceAccess(req.user, camera, 'managedBy');
+    const isAdmin = ['admin', 'super_admin'].includes(req.user.role);
+    
+    if (!hasAccess && !isAdmin) {
+      return sendErrorResponse(res, 'Không có quyền điều khiển camera này', 403);
+    }
+
+    if (!camera.status.isActive) {
+      return sendErrorResponse(res, 'Camera không hoạt động', 400);
+    }
+
+    // Gửi command điều khiển tới Python server
+    const success = socketService.sendToPythonServer({
+      type: 'camera_control',
+      data: {
+        cameraId: camera._id.toString(),
+        command,
+        value,
+        requestedBy: req.user._id.toString()
+      }
+    });
+
+    if (!success) {
+      return sendErrorResponse(res, 'Python server không khả dụng', 503);
+    }
+
+    return sendSuccessResponse(res, {
+      cameraId: camera._id,
+      command,
+      value,
+      timestamp: new Date()
+    }, 'Command điều khiển đã được gửi');
+
+  } catch (error) {
+    console.error('Error controlling camera:', error);
+    return sendErrorResponse(res, 'Lỗi server khi điều khiển camera', 500);
+  }
+};
+
+// Lấy trạng thái stream của camera
+export const getStreamStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const camera = await Camera.findById(id);
+    if (!camera) {
+      return sendErrorResponse(res, 'Camera không tồn tại', 404);
+    }
+
+    // Kiểm tra quyền truy cập
+    const hasAccess = await checkResourceAccess(req.user, camera, 'managedBy');
+    if (!hasAccess) {
+      return sendErrorResponse(res, 'Không có quyền truy cập camera này', 403);
+    }
+
+    const status = {
+      cameraId: camera._id,
+      name: camera.name,
+      isActive: camera.status.isActive,
+      streamEnabled: camera.streaming.enabled,
+      isStreaming: camera.streaming.isStreaming,
+      lastStreamStarted: camera.streaming.lastStreamStarted,
+      lastStreamStopped: camera.streaming.lastStreamStopped,
+      quality: camera.streaming.quality || 'medium',
+      currentViewers: camera.streaming.currentViewers || 0
+    };
+
+    return sendSuccessResponse(res, status, 'Trạng thái stream camera');
+
+  } catch (error) {
+    console.error('Error getting stream status:', error);
+    return sendErrorResponse(res, 'Lỗi server khi lấy trạng thái stream', 500);
+  }
+};
+
+// Lấy danh sách tất cả streams đang hoạt động
+export const getActiveStreams = async (req, res) => {
+  try {
+    // Tạo department filter
+    const departmentFilter = await createDepartmentFilter(req.user, {
+      ownerField: 'managedBy',
+      allowSelfOnly: false
+    });
+
+    const filter = {
+      'status.isActive': true,
+      'streaming.isStreaming': true,
+      ...departmentFilter
+    };
+
+    const activeStreams = await Camera.find(filter)
+      .populate('managedBy', 'name username')
+      .select('name description location streaming.quality streaming.lastStreamStarted streaming.currentViewers');
+
+    return sendSuccessResponse(res, activeStreams, 'Danh sách streams đang hoạt động');
+
+  } catch (error) {
+    console.error('Error getting active streams:', error);
+    return sendErrorResponse(res, 'Lỗi server khi lấy danh sách streams', 500);
+  }
+};
+
+// Cập nhật cài đặt stream cho camera
+export const updateStreamSettings = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quality, streamEnabled, frameRate, resolution, bitrate, maxClients } = req.body;
+
+    const camera = await Camera.findById(id);
+    if (!camera) {
+      return sendErrorResponse(res, 'Camera không tồn tại', 404);
+    }
+
+    // Kiểm tra quyền truy cập (chỉ admin hoặc người quản lý camera)
+    const hasAccess = await checkResourceAccess(req.user, camera, 'managedBy');
+    const isAdmin = ['admin', 'super_admin'].includes(req.user.role);
+    
+    if (!hasAccess && !isAdmin) {
+      return sendErrorResponse(res, 'Không có quyền cập nhật cài đặt camera này', 403);
+    }
+
+    // Cập nhật cài đặt streaming
+    if (quality !== undefined) camera.streaming.quality = quality;
+    if (streamEnabled !== undefined) camera.streaming.enabled = streamEnabled;
+    if (frameRate !== undefined) camera.streaming.frameRate = frameRate;
+    if (bitrate !== undefined) camera.streaming.bitrate = bitrate;
+    if (maxClients !== undefined) camera.streaming.maxClients = maxClients;
+    
+    // Cập nhật resolution trong technical specs
+    if (resolution !== undefined) {
+      if (!camera.technical.resolution) camera.technical.resolution = {};
+      if (resolution.width) camera.technical.resolution.width = resolution.width;
+      if (resolution.height) camera.technical.resolution.height = resolution.height;
+    }
+
+    await camera.save();
+
+    // Nếu camera đang stream và có thay đổi cài đặt, gửi update tới Python server
+    if (camera.streaming.isStreaming) {
+      socketService.sendToPythonServer({
+        type: 'update_stream_settings',
+        data: {
+          cameraId: camera._id.toString(),
+          quality: camera.streaming.quality,
+          frameRate: camera.streaming.frameRate,
+          resolution: camera.technical.resolution,
+          bitrate: camera.streaming.bitrate
+        }
+      });
+    }
+
+    return sendSuccessResponse(res, {
+      cameraId: camera._id,
+      settings: {
+        quality: camera.streaming.quality,
+        streamEnabled: camera.streaming.enabled,
+        frameRate: camera.streaming.frameRate,
+        resolution: camera.technical.resolution,
+        bitrate: camera.streaming.bitrate,
+        maxClients: camera.streaming.maxClients
+      }
+    }, 'Cài đặt stream đã được cập nhật');
+
+  } catch (error) {
+    console.error('Error updating stream settings:', error);
+    return sendErrorResponse(res, 'Lỗi server khi cập nhật cài đặt', 500);
   }
 };
