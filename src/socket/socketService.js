@@ -81,6 +81,63 @@ class SocketService {
         socket.emit('subscribed', { vehicleIds, gateIds });
       });
 
+      // Subscribe để nhận video stream từ camera
+      socket.on('subscribe_camera_stream', (data) => {
+        const { cameraIds, quality } = data;
+        
+        if (cameraIds) {
+          cameraIds.forEach(cameraId => {
+            socket.join(`camera_${cameraId}`);
+            
+            // Gửi yêu cầu bắt đầu stream tới Python server
+            this.sendToPythonServer({
+              type: 'start_stream',
+              data: {
+                cameraId,
+                clientId: socket.id,
+                quality: quality || 'medium'
+              }
+            });
+          });
+        }
+        
+        socket.emit('camera_subscribed', { cameraIds });
+      });
+
+      // Unsubscribe từ camera stream
+      socket.on('unsubscribe_camera_stream', (data) => {
+        const { cameraIds } = data;
+        
+        if (cameraIds) {
+          cameraIds.forEach(cameraId => {
+            socket.leave(`camera_${cameraId}`);
+            
+            // Kiểm tra nếu không còn client nào subscribe camera này
+            const room = this.io.sockets.adapter.rooms.get(`camera_${cameraId}`);
+            if (!room || room.size === 0) {
+              // Gửi yêu cầu dừng stream tới Python server
+              this.sendToPythonServer({
+                type: 'stop_stream',
+                data: { cameraId }
+              });
+            }
+          });
+        }
+        
+        socket.emit('camera_unsubscribed', { cameraIds });
+      });
+
+      // Điều khiển camera (pan, tilt, zoom)
+      socket.on('camera_control', (data) => {
+        const { cameraId, command, value } = data;
+        
+        // Gửi command điều khiển tới Python server
+        this.sendToPythonServer({
+          type: 'camera_control',
+          data: { cameraId, command, value, clientId: socket.id }
+        });
+      });
+
       // Xử lý request manual verification
       socket.on('manual_verification_request', async (data) => {
         try {
@@ -160,12 +217,30 @@ class SocketService {
 
   // Xử lý tin nhắn từ Python server
   async handlePythonServerMessage(data) {
-    try {
+    try {      
+      // Kiểm tra xem data có phải là JSON hợp lệ không
+      const messageString = data.toString();
+      if (!messageString.trim().startsWith('{') && !messageString.trim().startsWith('[')) {
+        console.warn('Received non-JSON message from Python server:', messageString);
+        return;
+      }
       const message = JSON.parse(data.toString());
       
       switch (message.type) {
         case 'license_plate_detected':
           await this.handleLicensePlateDetection(message.data);
+          break;
+          
+        case 'video_frame':
+          this.handleVideoStream(message.data);
+          break;
+          
+        case 'stream_status':
+          this.io.emit('stream_status', message.data);
+          break;
+          
+        case 'camera_control_response':
+          this.io.emit('camera_control_response', message.data);
           break;
           
         case 'processing_status':
@@ -181,6 +256,51 @@ class SocketService {
       }
     } catch (error) {
       console.error('Error processing Python server message:', error);
+    }
+  }
+
+  // Xử lý video stream từ Python server
+  handleVideoStream(data) {
+    try {
+      const { cameraId, frame, timestamp, metadata } = data;
+      
+      // Broadcast video frame tới clients đã subscribe camera này
+      this.io.to(`camera_${cameraId}`).emit('video_frame', {
+        cameraId,
+        frame,
+        timestamp,
+        metadata
+      });
+
+      console.log(`Video frame from camera ${cameraId} broadcasted`);
+    } catch (error) {
+      console.error('Error handling video stream:', error);
+    }
+  }
+
+  // Xử lý yêu cầu bắt đầu/dừng video stream
+  handleStreamControl(data) {
+    try {
+      const { cameraId, action, settings } = data;
+      
+      // Gửi command tới Python server để điều khiển stream
+      if (this.pythonServerSocket && this.pythonServerSocket.readyState === 1) {
+        this.pythonServerSocket.send(JSON.stringify({
+          type: 'stream_control',
+          data: { cameraId, action, settings }
+        }));
+      }
+
+      // Thông báo tới clients về trạng thái stream
+      this.io.to(`camera_${cameraId}`).emit('stream_status', {
+        cameraId,
+        action,
+        timestamp: new Date().toISOString()
+      });
+
+      console.log(`Stream ${action} for camera ${cameraId}`);
+    } catch (error) {
+      console.error('Error handling stream control:', error);
     }
   }
 
@@ -256,16 +376,17 @@ class SocketService {
 
   // Gửi command tới Python server
   sendToPythonServer(message) {
-    console.log('🚫 Python server disabled - Command not sent:', message);
-    return false;
+    if (process.env.PYTHON_SERVER_ENABLED !== 'true') {
+      console.log('🚫 Python server disabled - Command not sent:', message);
+      return false;
+    }
     
-    /*
     if (this.pythonServerSocket && this.pythonServerSocket.readyState === 1) {
       this.pythonServerSocket.send(JSON.stringify(message));
       return true;
     }
+    console.warn('Python server not connected - Command not sent:', message.type);
     return false;
-    */
   }
 
   // Simulate license plate detection for testing (when Python server is disabled)

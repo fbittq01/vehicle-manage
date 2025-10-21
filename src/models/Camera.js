@@ -106,6 +106,55 @@ const cameraSchema = new mongoose.Schema({
     }
   },
 
+  // Cấu hình streaming
+  streaming: {
+    enabled: {
+      type: Boolean,
+      default: true
+    },
+    quality: {
+      type: String,
+      enum: {
+        values: ['low', 'medium', 'high', 'ultra'],
+        message: '{VALUE} không phải là chất lượng hợp lệ'
+      },
+      default: 'medium'
+    },
+    frameRate: {
+      type: Number,
+      min: [1, 'Frame rate phải lớn hơn 0'],
+      max: [60, 'Frame rate không được vượt quá 60'],
+      default: 15
+    },
+    bitrate: {
+      type: Number,
+      min: [100, 'Bitrate tối thiểu 100 kbps'],
+      max: [10000, 'Bitrate tối đa 10000 kbps'],
+      default: 1000
+    },
+    maxClients: {
+      type: Number,
+      min: [1, 'Số client tối thiểu là 1'],
+      max: [50, 'Số client tối đa là 50'],
+      default: 10
+    },
+    isStreaming: {
+      type: Boolean,
+      default: false
+    },
+    lastStreamStarted: {
+      type: Date
+    },
+    lastStreamStopped: {
+      type: Date
+    },
+    currentViewers: {
+      type: Number,
+      default: 0,
+      min: [0, 'Số người xem không thể âm']
+    }
+  },
+
   // Cấu hình nhận diện
   recognition: {
     enabled: {

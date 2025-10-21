@@ -247,7 +247,7 @@ export const cameraSchema = Joi.object({
         .max(180)
         .optional()
     }).optional()
-  }).required(),
+  }).optional(),
   technical: Joi.object({
     ipAddress: Joi.string()
       .ip()
@@ -658,6 +658,69 @@ export const workingHoursRequestQuerySchema = Joi.object({
   requestedBy: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).optional()
 });
 
+// Video Stream validation schemas
+export const videoStreamRequestSchema = Joi.object({
+  quality: Joi.string()
+    .valid('low', 'medium', 'high', 'ultra')
+    .default('medium')
+    .messages({
+      'any.only': 'Chất lượng video phải là: low, medium, high, hoặc ultra'
+    }),
+  frameRate: Joi.number()
+    .min(1)
+    .max(60)
+    .optional()
+    .messages({
+      'number.min': 'Frame rate phải lớn hơn 0',
+      'number.max': 'Frame rate không được vượt quá 60'
+    }),
+  resolution: Joi.object({
+    width: Joi.number().min(320).max(3840).optional(),
+    height: Joi.number().min(240).max(2160).optional()
+  }).optional()
+});
+
+export const cameraControlSchema = Joi.object({
+  command: Joi.string()
+    .valid('pan_left', 'pan_right', 'tilt_up', 'tilt_down', 'zoom_in', 'zoom_out', 'preset')
+    .required()
+    .messages({
+      'any.only': 'Command phải là một trong: pan_left, pan_right, tilt_up, tilt_down, zoom_in, zoom_out, preset',
+      'any.required': 'Command là bắt buộc'
+    }),
+  value: Joi.number()
+    .min(-100)
+    .max(100)
+    .optional()
+    .messages({
+      'number.min': 'Giá trị phải từ -100 đến 100',
+      'number.max': 'Giá trị phải từ -100 đến 100'
+    })
+});
+
+export const streamSettingsSchema = Joi.object({
+  quality: Joi.string()
+    .valid('low', 'medium', 'high', 'ultra')
+    .optional(),
+  streamEnabled: Joi.boolean().optional(),
+  frameRate: Joi.number()
+    .min(1)
+    .max(60)
+    .optional(),
+  resolution: Joi.object({
+    width: Joi.number().min(320).max(3840).optional(),
+    height: Joi.number().min(240).max(2160).optional()
+  }).optional(),
+  bitrate: Joi.number()
+    .min(100)
+    .max(10000)
+    .optional(),
+  maxClients: Joi.number()
+    .min(1)
+    .max(50)
+    .optional()
+});
+
 // Middleware validation functions
 const validateQuery = (schema) => {
   return (req, res, next) => {
@@ -723,3 +786,6 @@ export const validateUpdateWorkingHoursRequest = validate(updateWorkingHoursRequ
 export const validateApprovalRequest = validate(approvalRequestSchema);
 export const validateWorkingHoursRequestParams = validateParams(workingHoursRequestParamsSchema);
 export const validateWorkingHoursRequestQuery = validateQuery(workingHoursRequestQuerySchema);
+export const validateVideoStreamRequest = validate(videoStreamRequestSchema);
+export const validateCameraControl = validate(cameraControlSchema);
+export const validateStreamSettings = validate(streamSettingsSchema);
