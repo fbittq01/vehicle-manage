@@ -1,4 +1,4 @@
-import { Camera, User } from '../models/index.js';
+import { Camera } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/response.js';
 import { createDepartmentFilter, checkResourceAccess } from '../utils/departmentFilter.js';
 import { getCameraStatsByDepartment } from '../utils/departmentStats.js';
@@ -53,11 +53,16 @@ export const getCameras = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip(skip);
+    // Thêm thông tin mật khẩu đã hash cho từng camera
+    const camerasWithPassword = cameras.map(camera => {
+      const cameraObj = camera.toObject();
+      return cameraObj;
+    });
 
     const total = await Camera.countDocuments(filter);
 
     return sendSuccessResponse(res, {
-      cameras,
+      cameras: camerasWithPassword,
       pagination: {
         current: parseInt(page),
         pages: Math.ceil(total / parseInt(limit)),
@@ -94,7 +99,7 @@ export const getCameraById = async (req, res) => {
       return sendErrorResponse(res, 'Không có quyền xem camera này', 403);
     }
 
-    return sendSuccessResponse(res, camera, 'Lấy thông tin camera thành công');
+    return sendSuccessResponse(res, camera.toObject(), 'Lấy thông tin camera thành công');
 
   } catch (error) {
     console.error('Lỗi khi lấy thông tin camera:', error);
@@ -139,7 +144,10 @@ export const createCamera = async (req, res) => {
     const populatedCamera = await Camera.findById(camera._id)
       .populate('managedBy', 'name username');
 
-    return sendSuccessResponse(res, populatedCamera, 'Tạo camera thành công', 201);
+    // Thêm thông tin mật khẩu đã hash
+    const cameraObj = populatedCamera.toObject();
+
+    return sendSuccessResponse(res, cameraObj, 'Tạo camera thành công', 201);
 
   } catch (error) {
     console.error('Lỗi khi tạo camera:', error);
@@ -205,7 +213,10 @@ export const updateCamera = async (req, res) => {
     const populatedCamera = await Camera.findById(camera._id)
       .populate('managedBy', 'name username');
 
-    return sendSuccessResponse(res, populatedCamera, 'Cập nhật camera thành công');
+    // Thêm thông tin mật khẩu đã mã hóa
+    const cameraObj = populatedCamera.toObject();
+
+    return sendSuccessResponse(res, cameraObj, 'Cập nhật camera thành công');
 
   } catch (error) {
     console.error('Lỗi khi cập nhật camera:', error);

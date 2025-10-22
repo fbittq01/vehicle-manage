@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { hashPassword } from '../utils/encryption.js';
 
 const cameraSchema = new mongoose.Schema({
   // Thông tin cơ bản
@@ -460,26 +461,35 @@ cameraSchema.methods.scheduleNextMaintenance = function() {
 };
 
 // Middleware
-cameraSchema.pre('save', function(next) {
-  // Tự động tính toán nextMaintenance nếu chưa có
-  if (this.isNew && !this.maintenance.nextMaintenance) {
-    const installDate = this.installationDate || new Date();
-    this.maintenance.nextMaintenance = new Date(
-      installDate.getTime() + (this.maintenance.maintenanceInterval * 24 * 60 * 60 * 1000)
-    );
-  }
-  
-  // Validate ROI không vượt quá resolution
-  if (this.recognition.roi && this.technical.resolution) {
-    const roi = this.recognition.roi;
-    const res = this.technical.resolution;
-    
-    if (roi.x + roi.width > res.width || roi.y + roi.height > res.height) {
-      return next(new Error('ROI vượt quá kích thước resolution'));
+cameraSchema.pre('save', async function(next) {
+  try {
+    // Hash mật khẩu camera nếu có thay đổi
+    if (this.isModified('technical.password') && this.technical.password) {
+      this.technical.password = await hashPassword(this.technical.password);
     }
+    
+    // Tự động tính toán nextMaintenance nếu chưa có
+    if (this.isNew && !this.maintenance.nextMaintenance) {
+      const installDate = this.installationDate || new Date();
+      this.maintenance.nextMaintenance = new Date(
+        installDate.getTime() + (this.maintenance.maintenanceInterval * 24 * 60 * 60 * 1000)
+      );
+    }
+    
+    // Validate ROI không vượt quá resolution
+    if (this.recognition.roi && this.technical.resolution) {
+      const roi = this.recognition.roi;
+      const res = this.technical.resolution;
+      
+      if (roi.x + roi.width > res.width || roi.y + roi.height > res.height) {
+        return next(new Error('ROI vượt quá kích thước resolution'));
+      }
+    }
+    
+    next();
+  } catch (error) {
+    next(error);
   }
-  
-  next();
 });
 
 export default mongoose.model('Camera', cameraSchema);
