@@ -261,6 +261,7 @@ class SocketService {
 
   // Xử lý video stream từ Python server
   handleVideoStream(data) {
+    console.log("🚀 ~ SocketService ~ handleVideoStream ~ data:", data)
     try {
       const { cameraId, frame, timestamp, metadata } = data;
       
@@ -317,7 +318,8 @@ class SocketService {
         originalImage,
         boundingBox,
         processingTime,
-        deviceInfo
+        deviceInfo,
+        video
       } = data;
 
       // Chuẩn hóa biển số

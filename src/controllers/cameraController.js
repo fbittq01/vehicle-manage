@@ -302,45 +302,7 @@ export const addMaintenanceNote = async (req, res) => {
   }
 };
 
-// Lập lịch bảo trì tiếp theo
-export const scheduleNextMaintenance = async (req, res) => {
-  try {
-    const { id } = req.params;
 
-    // Chỉ admin mới có thể lập lịch bảo trì
-    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
-      return sendErrorResponse(res, 'Không có quyền lập lịch bảo trì', 403);
-    }
-
-    const camera = await Camera.findById(id);
-    if (!camera) {
-      return sendErrorResponse(res, 'Không tìm thấy camera', 404);
-    }
-
-    await camera.scheduleNextMaintenance();
-
-    return sendSuccessResponse(res, camera, 'Lập lịch bảo trì thành công');
-
-  } catch (error) {
-    console.error('Lỗi khi lập lịch bảo trì:', error);
-    return sendErrorResponse(res, 'Lỗi server khi lập lịch bảo trì', 500);
-  }
-};
-
-// Lấy camera theo cổng
-export const getCamerasByGate = async (req, res) => {
-  try {
-    const { gateId } = req.params;
-    
-    const cameras = await Camera.findByGate(gateId);
-
-    return sendSuccessResponse(res, cameras, 'Lấy danh sách camera theo cổng thành công');
-
-  } catch (error) {
-    console.error('Lỗi khi lấy camera theo cổng:', error);
-    return sendErrorResponse(res, 'Lỗi server khi lấy camera theo cổng', 500);
-  }
-};
 
 // Lấy camera cần bảo trì
 export const getCamerasNeedingMaintenance = async (req, res) => {
@@ -519,62 +481,7 @@ export const stopCameraStream = async (req, res) => {
   }
 };
 
-// Điều khiển camera (PTZ)
-export const controlCamera = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { command, value } = req.body;
 
-    const validCommands = ['pan_left', 'pan_right', 'tilt_up', 'tilt_down', 'zoom_in', 'zoom_out', 'preset'];
-
-    if (!validCommands.includes(command)) {
-      return sendErrorResponse(res, 'Command không hợp lệ', 400);
-    }
-
-    const camera = await Camera.findById(id);
-    if (!camera) {
-      return sendErrorResponse(res, 'Camera không tồn tại', 404);
-    }
-
-    // Kiểm tra quyền truy cập (chỉ admin hoặc người quản lý camera)
-    const hasAccess = await checkResourceAccess(req.user, camera, 'managedBy');
-    const isAdmin = ['admin', 'super_admin'].includes(req.user.role);
-    
-    if (!hasAccess && !isAdmin) {
-      return sendErrorResponse(res, 'Không có quyền điều khiển camera này', 403);
-    }
-
-    if (!camera.status.isActive) {
-      return sendErrorResponse(res, 'Camera không hoạt động', 400);
-    }
-
-    // Gửi command điều khiển tới Python server
-    const success = socketService.sendToPythonServer({
-      type: 'camera_control',
-      data: {
-        cameraId: camera._id.toString(),
-        command,
-        value,
-        requestedBy: req.user._id.toString()
-      }
-    });
-
-    if (!success) {
-      return sendErrorResponse(res, 'Python server không khả dụng', 503);
-    }
-
-    return sendSuccessResponse(res, {
-      cameraId: camera._id,
-      command,
-      value,
-      timestamp: new Date()
-    }, 'Command điều khiển đã được gửi');
-
-  } catch (error) {
-    console.error('Error controlling camera:', error);
-    return sendErrorResponse(res, 'Lỗi server khi điều khiển camera', 500);
-  }
-};
 
 // Lấy trạng thái stream của camera
 export const getStreamStatus = async (req, res) => {

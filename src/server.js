@@ -15,7 +15,6 @@ import {
 import {
   generalLimiter
 } from './middleware/rateLimiter.js';
-import { specs, swaggerUi, swaggerSetup, swaggerUIOptions } from './config/swagger.js';
 
 // Load environment variables
 dotenv.config();
@@ -25,8 +24,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware setup
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  contentSecurityPolicy: false // Disable default CSP để sử dụng custom CSP cho Swagger
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -58,10 +56,7 @@ if (process.env.NODE_ENV === 'production') {
 // Rate limiting
 app.use('/api', generalLimiter);
 
-// Swagger Documentation với CSP middleware
-app.use('/api-docs', swaggerSetup);
-app.use('/api-docs', swaggerUi.serve);
-app.get('/api-docs', swaggerUi.setup(specs, swaggerUIOptions));
+
 
 // Routes
 app.use('/api', routes);
@@ -73,7 +68,6 @@ app.get('/', (req, res) => {
     message: 'Hệ thống quản lý phương tiện API',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
-    documentation: '/api-docs',
     videoTestClient: '/video_test_client.html'
   });
 });
