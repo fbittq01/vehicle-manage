@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { hashPassword } from '../utils/encryption.js';
+import { encryptPassword } from '../utils/encryption.js';
 
 const cameraSchema = new mongoose.Schema({
   // Thông tin cơ bản
@@ -465,7 +465,7 @@ cameraSchema.pre('save', async function(next) {
   try {
     // Hash mật khẩu camera nếu có thay đổi
     if (this.isModified('technical.password') && this.technical.password) {
-      this.technical.password = await hashPassword(this.technical.password);
+      this.technical.password = await encryptPassword(this.technical.password);
     }
     
     // Tự động tính toán nextMaintenance nếu chưa có

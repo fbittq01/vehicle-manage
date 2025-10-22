@@ -1,26 +1,19 @@
 import crypto from 'crypto';
 
-// Key và IV cho encryption/decryption - nên lưu trong env variable
-const ENCRYPTION_KEY = process.env.CAMERA_ENCRYPTION_KEY || 'default-32-char-key-for-camera!!'; // 32 characters
-const IV_LENGTH = 16; // For AES, this is always 16
+const IV_LENGTH = 16;
+const ENCRYPTION_KEY = process.env.CAMERA_ENCRYPTION_KEY || 'default-32-char-key-for-camera!!';
 
-/**
- * Mã hóa mật khẩu camera
- * @param {string} text - Mật khẩu gốc cần mã hóa
- * @returns {string} - Mật khẩu đã được mã hóa (format: iv:encrypted)
- */
 export const encryptPassword = (text) => {
   if (!text) return '';
-  
+
   try {
     const iv = crypto.randomBytes(IV_LENGTH);
-    const cipher = crypto.createCipher('aes-256-cbc', ENCRYPTION_KEY);
-    cipher.setAutoPadding(true);
-    
+    const key = Buffer.from(ENCRYPTION_KEY.padEnd(32, '\0')).slice(0, 32);
+
+    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
     let encrypted = cipher.update(text, 'utf8', 'hex');
     encrypted += cipher.final('hex');
-    
-    // Kết hợp IV và encrypted text
+
     return iv.toString('hex') + ':' + encrypted;
   } catch (error) {
     console.error('Error encrypting password:', error);
@@ -44,10 +37,9 @@ export const decryptPassword = (encryptedText) => {
     
     const iv = Buffer.from(parts[0], 'hex');
     const encrypted = parts[1];
+    const key = Buffer.from(ENCRYPTION_KEY.padEnd(32, '\0')).slice(0, 32);
     
-    const decipher = crypto.createDecipher('aes-256-cbc', ENCRYPTION_KEY);
-    decipher.setAutoPadding(true);
-    
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     
