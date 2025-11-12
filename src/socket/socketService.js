@@ -29,6 +29,7 @@ class SocketService {
     });
 
     this.setupSocketHandlers();
+    this.startPeriodicLogging();
     
     // Kiểm tra environment variable để enable/disable Python server
     if (process.env.PYTHON_SERVER_ENABLED === 'true') {
@@ -43,7 +44,16 @@ class SocketService {
   // Thiết lập các event handlers cho client connections
   setupSocketHandlers() {
     this.io.on('connection', (socket) => {
-      console.log(`Client connected: ${socket.id}`);
+      const timestamp = new Date().toISOString();
+      const clientInfo = {
+        id: socket.id,
+        ip: socket.handshake.address,
+        userAgent: socket.handshake.headers['user-agent'],
+        origin: socket.handshake.headers.origin
+      };
+      
+      console.log(`🔌 [${timestamp}] Client connected:`, clientInfo);
+      console.log(`📊 Total connected clients: ${this.io.sockets.sockets.size}`);
       
       // Xác thực client (optional)
       socket.on('authenticate', async (data) => {
@@ -84,10 +94,26 @@ class SocketService {
       // Subscribe để nhận video stream từ camera
       socket.on('subscribe_camera_stream', (data) => {
         const { cameraIds, quality } = data;
+        const timestamp = new Date().toISOString();
+        
+        console.log(`📹 [${timestamp}] FE subscribing to camera stream:`, {
+          socketId: socket.id,
+          clientIP: socket.handshake.address,
+          cameraIds: cameraIds,
+          quality: quality || 'medium',
+          userAgent: socket.handshake.headers['user-agent']?.substring(0, 50) + '...'
+        });
         
         if (cameraIds) {
           cameraIds.forEach(cameraId => {
             socket.join(`camera_${cameraId}`);
+            
+            console.log(`🎥 [${timestamp}] Client joined camera room:`, {
+              socketId: socket.id,
+              cameraId: cameraId,
+              roomName: `camera_${cameraId}`,
+              totalClientsInRoom: this.io.sockets.adapter.rooms.get(`camera_${cameraId}`)?.size || 1
+            });
             
             // Gửi yêu cầu bắt đầu stream tới Python server
             this.sendToPythonServer({
@@ -98,15 +124,29 @@ class SocketService {
                 quality: quality || 'medium'
               }
             });
+            
+            console.log(`🚀 [${timestamp}] Stream request sent to Python server:`, {
+              cameraId: cameraId,
+              clientId: socket.id,
+              quality: quality || 'medium'
+            });
           });
         }
         
         socket.emit('camera_subscribed', { cameraIds });
+        console.log(`✅ [${timestamp}] Camera subscription confirmed for client: ${socket.id}`);
       });
 
       // Unsubscribe từ camera stream
       socket.on('unsubscribe_camera_stream', (data) => {
         const { cameraIds } = data;
+        const timestamp = new Date().toISOString();
+        
+        console.log(`📹❌ [${timestamp}] FE unsubscribing from camera stream:`, {
+          socketId: socket.id,
+          clientIP: socket.handshake.address,
+          cameraIds: cameraIds
+        });
         
         if (cameraIds) {
           cameraIds.forEach(cameraId => {
@@ -114,17 +154,32 @@ class SocketService {
             
             // Kiểm tra nếu không còn client nào subscribe camera này
             const room = this.io.sockets.adapter.rooms.get(`camera_${cameraId}`);
+            const remainingClients = room?.size || 0;
+            
+            console.log(`🚪 [${timestamp}] Client left camera room:`, {
+              socketId: socket.id,
+              cameraId: cameraId,
+              roomName: `camera_${cameraId}`,
+              remainingClientsInRoom: remainingClients
+            });
+            
             if (!room || room.size === 0) {
               // Gửi yêu cầu dừng stream tới Python server
               this.sendToPythonServer({
                 type: 'stop_stream',
                 data: { cameraId }
               });
+              
+              console.log(`⏹️ [${timestamp}] Stream stop request sent to Python server:`, {
+                cameraId: cameraId,
+                reason: 'No more clients subscribed'
+              });
             }
           });
         }
         
         socket.emit('camera_unsubscribed', { cameraIds });
+        console.log(`✅ [${timestamp}] Camera unsubscription confirmed for client: ${socket.id}`);
       });
 
       // Điều khiển camera (pan, tilt, zoom)
@@ -158,8 +213,30 @@ class SocketService {
       });
 
       // Xử lý disconnect
-      socket.on('disconnect', () => {
-        console.log(`Client disconnected: ${socket.id}`);
+      socket.on('disconnect', (reason) => {
+        const timestamp = new Date().toISOString();
+        const clientData = this.connectedClients.get(socket.id);
+        
+        console.log(`🔌❌ [${timestamp}] Client disconnected:`, {
+          socketId: socket.id,
+          clientIP: socket.handshake.address,
+          reason: reason,
+          userData: clientData || 'Not authenticated',
+          connectionDuration: clientData ? 
+            `${Math.round((Date.now() - clientData.connectedAt) / 1000)}s` : 'Unknown'
+        });
+        
+        console.log(`📊 Total remaining clients: ${this.io.sockets.sockets.size - 1}`);
+        
+        // Log các camera rooms mà client này đang subscribe
+        const rooms = Array.from(socket.rooms).filter(room => room.startsWith('camera_'));
+        if (rooms.length > 0) {
+          console.log(`📹🚪 [${timestamp}] Client was subscribed to camera rooms:`, {
+            socketId: socket.id,
+            cameraRooms: rooms
+          });
+        }
+        
         this.connectedClients.delete(socket.id);
       });
     });
@@ -261,19 +338,33 @@ class SocketService {
 
   // Xử lý video stream từ Python server
   handleVideoStream(data) {
-    console.log("🚀 ~ SocketService ~ handleVideoStream ~ data:", data)
     try {
       const { cameraId, frame, timestamp, metadata } = data;
+      const currentTime = new Date().toISOString();
       
-      // Broadcast video frame tới clients đã subscribe camera này
-      this.io.to(`camera_${cameraId}`).emit('video_frame', {
-        cameraId,
-        frame,
-        timestamp,
-        metadata
-      });
+      // Lấy thông tin room để biết có bao nhiêu clients đang subscribe
+      const room = this.io.sockets.adapter.rooms.get(`camera_${cameraId}`);
+      const subscriberCount = room?.size || 0;
+      
+      if (subscriberCount > 0) {
+        // Broadcast video frame tới clients đã subscribe camera này
+        this.io.to(`camera_${cameraId}`).emit('video_frame', {
+          cameraId,
+          frame,
+          timestamp,
+          metadata
+        });
 
-      console.log(`Video frame from camera ${cameraId} broadcasted`);
+        console.log(`📺 [${currentTime}] Video frame broadcasted:`, {
+          cameraId: cameraId,
+          frameSize: frame ? `${Math.round(frame.length / 1024)}KB` : 'No frame data',
+          subscriberCount: subscriberCount,
+          timestamp: timestamp,
+          metadata: metadata
+        });
+      } else {
+        console.log(`📺❌ [${currentTime}] No subscribers for camera ${cameraId}, frame dropped`);
+      }
     } catch (error) {
       console.error('Error handling video stream:', error);
     }
@@ -441,6 +532,50 @@ class SocketService {
   // Lấy thông tin clients đang kết nối
   getConnectedClients() {
     return Array.from(this.connectedClients.values());
+  }
+
+  // Method để log thống kê kết nối hiện tại
+  logConnectionStats() {
+    const timestamp = new Date().toISOString();
+    const totalClients = this.io.sockets.sockets.size;
+    const authenticatedClients = this.connectedClients.size;
+    
+    // Thống kê camera rooms
+    const cameraRooms = new Map();
+    this.io.sockets.adapter.rooms.forEach((sockets, roomName) => {
+      if (roomName.startsWith('camera_')) {
+        const cameraId = roomName.replace('camera_', '');
+        cameraRooms.set(cameraId, sockets.size);
+      }
+    });
+
+    console.log(`📊 [${timestamp}] Connection Statistics:`, {
+      totalClients,
+      authenticatedClients,
+      unauthenticatedClients: totalClients - authenticatedClients,
+      activeCameraStreams: cameraRooms.size,
+      cameraSubscriptions: Object.fromEntries(cameraRooms)
+    });
+
+    // Log chi tiết clients đã authenticate
+    if (authenticatedClients > 0) {
+      console.log(`👥 [${timestamp}] Authenticated Clients:`, 
+        Array.from(this.connectedClients.values()).map(client => ({
+          socketId: client.socketId,
+          userId: client.userId,
+          role: client.role,
+          connectedFor: `${Math.round((Date.now() - client.connectedAt) / 1000)}s`
+        }))
+      );
+    }
+  }
+  // Tự động log thống kê mỗi 30 giây nếu có client kết nối
+  startPeriodicLogging() {
+    setInterval(() => {
+      if (this.io && this.io.sockets.sockets.size > 0) {
+        this.logConnectionStats();
+      }
+    }, 30000); // 30 seconds
   }
 
   // Đóng connections
