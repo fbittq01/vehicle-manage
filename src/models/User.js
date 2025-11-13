@@ -31,14 +31,18 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: {
-      values: ['super_admin', 'admin', 'user'],
+      values: ['super_admin', 'admin', 'supervisor', 'user'],
       message: '{VALUE} không phải là role hợp lệ'
     },
     default: 'user'
   },
   department: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Department'
+    ref: 'Department',
+    // Supervisor có thể không thuộc department nào (null)
+    required: function() {
+      return this.role !== 'supervisor' && this.role !== 'super_admin';
+    }
   },
   employeeId: {
     type: String,
@@ -137,6 +141,22 @@ userSchema.statics.findByDepartmentAndRole = function(departmentId, role) {
     role: role,
     isActive: true 
   }).populate('department', 'name code');
+};
+
+// Method kiểm tra quyền supervisor
+userSchema.methods.isSupervisor = function() {
+  return this.role === 'supervisor';
+};
+
+// Method kiểm tra quyền từ một role tối thiểu trở lên
+userSchema.methods.hasMinimumRole = function(minRole) {
+  const roleHierarchy = {
+    'user': 1,
+    'supervisor': 2,
+    'admin': 3,
+    'super_admin': 4
+  };
+  return roleHierarchy[this.role] >= roleHierarchy[minRole];
 };
 
 export default mongoose.model('User', userSchema);

@@ -43,8 +43,8 @@ router.use(authenticateToken);
 // CAMERA MANAGEMENT ROUTES (General)
 // ============================================================================
 
-// GET /api/cameras - Get cameras list with filters
-router.get('/', activityMiddleware('VIEW_CAMERA', 'cameras'), getCameras);
+// GET /api/cameras - Get cameras list with filters (admin only)
+router.get('/', authorize('admin', 'super_admin'), activityMiddleware('VIEW_CAMERA', 'cameras'), getCameras);
 
 // POST /api/cameras - Create new camera (Admin only)
 router.post('/', validateCamera, authorize('admin', 'super_admin'), activityMiddleware('CREATE_CAMERA', 'cameras'), createCamera);

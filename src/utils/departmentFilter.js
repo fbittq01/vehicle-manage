@@ -82,7 +82,12 @@ export const createDepartmentFilter = async (user, options = {}) => {
     return {};
   }
 
-  // Kiểm tra user có department không
+  // Supervisor xem tất cả (không thuộc department cụ thể)
+  if (user.role === 'supervisor') {
+    return {};
+  }
+
+  // Kiểm tra user có department không (trừ supervisor)
   if (!user.department) {
     throw new Error('USER_NO_DEPARTMENT');
   }

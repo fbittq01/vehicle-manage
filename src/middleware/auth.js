@@ -86,6 +86,9 @@ export const requireSuperAdmin = authorize('super_admin');
 // Middleware kiểm tra quyền admin trở lên
 export const requireAdmin = authorize('super_admin', 'admin');
 
+// Middleware kiểm tra quyền supervisor trở lên
+export const requireSupervisor = authorize('super_admin', 'admin', 'supervisor');
+
 // Middleware kiểm tra role cụ thể
 export const requireRole = (roles) => {
   return (req, res, next) => {
