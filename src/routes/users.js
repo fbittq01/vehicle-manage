@@ -12,7 +12,8 @@ import {
 import {
   authenticateToken,
   requireAdmin,
-  requireSuperAdmin
+  requireSuperAdmin,
+  requireSupervisor
 } from '../middleware/auth.js';
 import {
   validateRegister,
@@ -25,10 +26,10 @@ const router = express.Router();
 // Tất cả routes cần authentication
 router.use(authenticateToken);
 
-// Admin routes
-router.get('/', requireAdmin, activityMiddleware('VIEW_USER', 'users'), getUsers);
+// Admin routes (supervisor có quyền read-only)
+router.get('/', requireSupervisor, activityMiddleware('VIEW_USER', 'users'), getUsers);
 router.get('/stats', requireAdmin, activityMiddleware('VIEW_ANALYTICS', 'users'), getUserStats);
-router.get('/:id', requireAdmin, activityMiddleware('VIEW_USER', 'users'), getUserById);
+router.get('/:id', requireSupervisor, activityMiddleware('VIEW_USER', 'users'), getUserById);
 router.post('/', requireAdmin, validateRegister, activityMiddleware('CREATE_USER', 'users'), createUser);
 router.put('/:id', requireAdmin, validateUpdateUser, activityMiddleware('UPDATE_USER', 'users'), updateUser);
 router.delete('/:id', requireAdmin, activityMiddleware('DELETE_USER', 'users'), deleteUser);
