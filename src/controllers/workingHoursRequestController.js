@@ -4,6 +4,13 @@ import { getPaginationParams, createPagination, getStartOfDay, getEndOfDay } fro
 import { normalizeLicensePlate } from '../utils/licensePlate.js';
 import { asyncHandler } from '../middleware/logger.js';
 
+// Import socketService instance (sẽ được inject từ server.js)
+let socketServiceInstance = null;
+
+export const setSocketService = (socketService) => {
+  socketServiceInstance = socketService;
+};
+
 // Lấy danh sách yêu cầu ra / vào giờ hành chính
 export const getWorkingHoursRequests = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPaginationParams(req);
@@ -170,6 +177,15 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
   const request = new WorkingHoursRequest(requestData);
   await request.save();
 
+  // Gửi thông báo tới admin cấp trên thuộc department
+  if (socketServiceInstance) {
+    try {
+      await socketServiceInstance.notifyWorkingHoursRequest(request);
+    } catch (error) {
+      console.error('Error sending working hours request notification:', error);
+    }
+  }
+
   // Tự động approve nếu được tạo bởi admin hoặc super_admin
   if (['admin', 'super_admin'].includes(req.user.role)) {
     request.status = 'approved';
@@ -178,6 +194,15 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
     request.validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // Hết hạn sau 24 giờ
     request.approvalNote = `Tự động phê duyệt - Được tạo bởi admin ${req.user.name}`;
     await request.save();
+    
+    // Gửi thông báo cập nhật trạng thái
+    if (socketServiceInstance) {
+      try {
+        await socketServiceInstance.notifyWorkingHoursRequestUpdate(request, 'pending');
+      } catch (error) {
+        console.error('Error sending working hours request update notification:', error);
+      }
+    }
   }
 
   const populatedRequest = await WorkingHoursRequest.findById(request._id)
@@ -292,6 +317,15 @@ export const approveWorkingHoursRequest = asyncHandler(async (req, res) => {
 
   await request.save();
 
+  // Gửi thông báo cập nhật trạng thái tới người yêu cầu
+  if (socketServiceInstance) {
+    try {
+      await socketServiceInstance.notifyWorkingHoursRequestUpdate(request, 'pending');
+    } catch (error) {
+      console.error('Error sending working hours request update notification:', error);
+    }
+  }
+
   const updatedRequest = await WorkingHoursRequest.findById(request._id)
     .populate('requestedBy', 'name username employeeId department phone')
     .populate('approvedBy', 'name username');
@@ -323,6 +357,15 @@ export const rejectWorkingHoursRequest = asyncHandler(async (req, res) => {
   }
 
   await request.save();
+
+  // Gửi thông báo cập nhật trạng thái tới người yêu cầu
+  if (socketServiceInstance) {
+    try {
+      await socketServiceInstance.notifyWorkingHoursRequestUpdate(request, 'pending');
+    } catch (error) {
+      console.error('Error sending working hours request update notification:', error);
+    }
+  }
 
   const updatedRequest = await WorkingHoursRequest.findById(request._id)
     .populate('requestedBy', 'name username employeeId department phone')

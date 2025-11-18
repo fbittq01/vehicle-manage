@@ -9,6 +9,7 @@ import workingHoursRoutes from './workingHours.js';
 import workingHoursRequestRoutes from './workingHoursRequests.js';
 import departmentRoutes from './departments.js';
 import activityRoutes from './activity.js';
+import notificationRoutes from './notifications.js';
 
 const router = express.Router();
 
@@ -34,6 +35,7 @@ router.use('/working-hours', workingHoursRoutes);
 router.use('/working-hours-requests', workingHoursRequestRoutes);
 router.use('/departments', departmentRoutes);
 router.use('/activity', activityRoutes);
+router.use('/notifications', notificationRoutes);
 // router.use('/simulation', simulationRoutes);
 
 export default router;

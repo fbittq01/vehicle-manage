@@ -7,6 +7,13 @@ import { processRecognitionImages } from '../utils/fileStorage.js';
 import { checkAndApplyRequest } from './workingHoursRequestController.js';
 import { createDepartmentFilter, checkResourceAccess } from '../utils/departmentFilter.js';
 
+// Import socketService instance (sẽ được inject từ server.js)
+let socketServiceInstance = null;
+
+export const setSocketService = (socketService) => {
+  socketServiceInstance = socketService;
+};
+
 // Lấy danh sách access logs
 export const getAccessLogs = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPaginationParams(req);
@@ -177,6 +184,15 @@ export const createAccessLogLogic = async (logData) => {
     .populate('vehicle', 'licensePlate vehicleType name color')
     .populate('owner', 'name username phone')
     .populate('verifiedBy', 'name username');
+
+  // Gửi thông báo nếu cần verification thủ công
+  if (populatedLog.verificationStatus === 'pending' && socketServiceInstance) {
+    try {
+      await socketServiceInstance.notifyAccessLogVerification(populatedLog);
+    } catch (error) {
+      console.error('Error sending access log verification notification:', error);
+    }
+  }
 
   return { populatedLog, vehicle };
 };
@@ -905,7 +921,7 @@ export const getUserWorkingHoursReport = asyncHandler(async (req, res) => {
       if (earlyCheck.isEarly && !hasApprovedRequest) {
         dailyReport[dateKey].violations.push({
           type: 'early_exit',
-                    time: timeStr,
+          time: timeStr,
           minutes: earlyCheck.earlyMinutes,
           licensePlate: log.licensePlate
         });
@@ -960,4 +976,178 @@ export const getUserWorkingHoursReport = asyncHandler(async (req, res) => {
     summary,
     dailyReport: sortedDays
   }, `Lấy báo cáo giờ hành chính của ${user.name} thành công`);
+});
+
+// Lấy danh sách access log cần verification
+export const getPendingVerificationLogs = asyncHandler(async (req, res) => {
+  const { page, limit, skip } = getPaginationParams(req);
+  const { gateId, confidenceThreshold = 0.8 } = req.query;
+
+  // Chỉ supervisor mới có quyền xem
+  if (req.user.role !== 'supervisor' && req.user.role !== 'super_admin') {
+    return sendErrorResponse(res, 'Không có quyền truy cập', 403);
+  }
+
+  const filter = {
+    verificationStatus: 'pending',
+    $or: [
+      { 'recognitionData.confidence': { $lt: parseFloat(confidenceThreshold) } },
+      { isVehicleRegistered: false }
+    ]
+  };
+
+  if (gateId) {
+    filter.gateId = gateId;
+  }
+
+  const [logs, total] = await Promise.all([
+    AccessLog.find(filter)
+      .populate('vehicle', 'brand model color description')
+      .populate('owner', 'name username department')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    AccessLog.countDocuments(filter)
+  ]);
+
+  const pagination = createPagination(page, limit, total);
+
+  sendPaginatedResponse(res, logs, pagination, 'Lấy danh sách access log cần xác minh thành công');
+});
+
+// Phê duyệt access log
+export const approveAccessLog = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { verificationNote } = req.body;
+
+  // Chỉ supervisor mới có quyền approve
+  if (req.user.role !== 'supervisor' && req.user.role !== 'super_admin') {
+    return sendErrorResponse(res, 'Không có quyền phê duyệt', 403);
+  }
+
+  const accessLog = await AccessLog.findById(id);
+  
+  if (!accessLog) {
+    return sendErrorResponse(res, 'Không tìm thấy access log', 404);
+  }
+
+  if (accessLog.verificationStatus !== 'pending') {
+    return sendErrorResponse(res, 'Access log này đã được xử lý', 400);
+  }
+
+  const previousStatus = accessLog.verificationStatus;
+  accessLog.verificationStatus = 'approved';
+  accessLog.verifiedBy = req.user._id;
+  accessLog.verificationTime = new Date();
+  
+  if (verificationNote) {
+    accessLog.verificationNote = verificationNote.trim();
+  }
+
+  await accessLog.save();
+
+  // Gửi thông báo tới chủ xe
+  if (socketServiceInstance) {
+    try {
+      await socketServiceInstance.notifyAccessLogVerified(accessLog);
+    } catch (error) {
+      console.error('Error sending access log verification notification:', error);
+    }
+  }
+
+  const updatedLog = await AccessLog.findById(accessLog._id)
+    .populate('vehicle', 'brand model color description')
+    .populate('owner', 'name username department')
+    .populate('verifiedBy', 'name username');
+
+  sendSuccessResponse(res, { accessLog: updatedLog }, 'Phê duyệt access log thành công');
+});
+
+// Từ chối access log
+export const rejectAccessLog = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { verificationNote } = req.body;
+
+  // Chỉ supervisor mới có quyền reject
+  if (req.user.role !== 'supervisor' && req.user.role !== 'super_admin') {
+    return sendErrorResponse(res, 'Không có quyền từ chối', 403);
+  }
+
+  const accessLog = await AccessLog.findById(id);
+  
+  if (!accessLog) {
+    return sendErrorResponse(res, 'Không tìm thấy access log', 404);
+  }
+
+  if (accessLog.verificationStatus !== 'pending') {
+    return sendErrorResponse(res, 'Access log này đã được xử lý', 400);
+  }
+
+  const previousStatus = accessLog.verificationStatus;
+  accessLog.verificationStatus = 'rejected';
+  accessLog.verifiedBy = req.user._id;
+  accessLog.verificationTime = new Date();
+  
+  if (verificationNote) {
+    accessLog.verificationNote = verificationNote.trim();
+  } else {
+    accessLog.verificationNote = 'Từ chối xác minh';
+  }
+
+  await accessLog.save();
+
+  // Gửi thông báo tới chủ xe
+  if (socketServiceInstance) {
+    try {
+      await socketServiceInstance.notifyAccessLogVerified(accessLog);
+    } catch (error) {
+      console.error('Error sending access log verification notification:', error);
+    }
+  }
+
+  const updatedLog = await AccessLog.findById(accessLog._id)
+    .populate('vehicle', 'brand model color description')
+    .populate('owner', 'name username department')
+    .populate('verifiedBy', 'name username');
+
+  sendSuccessResponse(res, { accessLog: updatedLog }, 'Từ chối access log thành công');
+});
+
+// Thống kê access log cần verification
+export const getVerificationStats = asyncHandler(async (req, res) => {
+  // Chỉ supervisor mới có quyền xem
+  if (req.user.role !== 'supervisor' && req.user.role !== 'super_admin') {
+    return sendErrorResponse(res, 'Không có quyền truy cập', 403);
+  }
+
+  const stats = await AccessLog.aggregate([
+    {
+      $group: {
+        _id: '$verificationStatus',
+        count: { $sum: 1 },
+        avgConfidence: { $avg: '$recognitionData.confidence' }
+      }
+    }
+  ]);
+
+  const lowConfidenceCount = await AccessLog.countDocuments({
+    'recognitionData.confidence': { $lt: 0.8 },
+    verificationStatus: 'pending'
+  });
+
+  const unregisteredVehicleCount = await AccessLog.countDocuments({
+    isVehicleRegistered: false,
+    verificationStatus: 'pending'
+  });
+
+  const result = {
+    statusBreakdown: stats,
+    pendingVerification: {
+      lowConfidence: lowConfidenceCount,
+      unregisteredVehicle: unregisteredVehicleCount,
+      total: lowConfidenceCount + unregisteredVehicleCount
+    }
+  };
+
+  sendSuccessResponse(res, result, 'Lấy thống kê verification thành công');
 });

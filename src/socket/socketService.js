@@ -4,6 +4,7 @@ import { AccessLog, Vehicle, User } from '../models/index.js';
 import { normalizeLicensePlate, validateVietnameseLicensePlate } from '../utils/licensePlate.js';
 import { processRecognitionImages } from '../utils/fileStorage.js';
 import { createAccessLogLogic } from '../controllers/accessLogController.js';
+import NotificationService from '../services/notificationService.js';
 
 class SocketService {
   constructor() {
@@ -14,6 +15,7 @@ class SocketService {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 10;
     this.reconnectDelay = 5000; // 5 seconds
+    this.notificationService = null;
   }
 
   // Khởi tạo Socket.IO server
@@ -27,6 +29,9 @@ class SocketService {
       },
       transports: ['websocket', 'polling']
     });
+
+    // Khởi tạo notification service
+    this.notificationService = new NotificationService(this);
 
     this.setupSocketHandlers();
     this.startPeriodicLogging();
@@ -55,20 +60,90 @@ class SocketService {
       console.log(`🔌 [${timestamp}] Client connected:`, clientInfo);
       console.log(`📊 Total connected clients: ${this.io.sockets.sockets.size}`);
       
-      // Xác thực client (optional)
+      // Xác thực client và subscribe notifications
       socket.on('authenticate', async (data) => {
         try {
-          // Có thể thêm logic xác thực JWT token ở đây
+          const { userId, role, departmentId, token } = data;
+          
+          // TODO: Có thể thêm logic xác thực JWT token ở đây
+          // const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          
+          // Lưu thông tin client
           this.connectedClients.set(socket.id, {
             socketId: socket.id,
-            userId: data.userId,
-            role: data.role,
+            userId,
+            role,
+            departmentId,
             connectedAt: new Date()
           });
           
-          socket.emit('authenticated', { success: true });
+          // Join room theo user ID để nhận thông báo cá nhân
+          socket.join(`user_${userId}`);
+          
+          // Join room theo role để nhận thông báo theo vai trò
+          socket.join(`role_${role}`);
+          
+          // Join room theo department nếu có
+          if (departmentId) {
+            socket.join(`department_${departmentId}`);
+          }
+          
+          console.log(`🔐 [${timestamp}] User authenticated:`, {
+            socketId: socket.id,
+            userId,
+            role,
+            departmentId,
+            rooms: Array.from(socket.rooms)
+          });
+          
+          socket.emit('authenticated', { 
+            success: true,
+            rooms: Array.from(socket.rooms)
+          });
         } catch (error) {
+          console.error('Authentication error:', error);
           socket.emit('authentication_error', { error: error.message });
+        }
+      });
+
+      // Subscribe để nhận thông báo notifications
+      socket.on('subscribe_notifications', async (data) => {
+        try {
+          const clientInfo = this.connectedClients.get(socket.id);
+          if (!clientInfo) {
+            socket.emit('subscription_error', { error: 'Not authenticated' });
+            return;
+          }
+
+          const { types } = data; // ['working_hours_request', 'access_log_verification', etc.]
+          
+          // Join room theo loại thông báo
+          if (types && Array.isArray(types)) {
+            types.forEach(type => {
+              socket.join(`notification_${type}`);
+            });
+          }
+          
+          // Cập nhật trạng thái delivered cho các notifications chưa delivered
+          if (this.notificationService) {
+            try {
+              await this.updateNotificationDeliveryStatus(clientInfo.userId, socket.handshake.address);
+            } catch (error) {
+              console.error('Error updating notification delivery status:', error);
+            }
+          }
+          
+          console.log(`🔔 [${timestamp}] Notification subscription:`, {
+            socketId: socket.id,
+            userId: clientInfo.userId,
+            types,
+            rooms: Array.from(socket.rooms)
+          });
+          
+          socket.emit('notifications_subscribed', { types });
+        } catch (error) {
+          console.error('Subscription error:', error);
+          socket.emit('subscription_error', { error: error.message });
         }
       });
 
@@ -215,28 +290,16 @@ class SocketService {
       // Xử lý disconnect
       socket.on('disconnect', (reason) => {
         const timestamp = new Date().toISOString();
-        const clientData = this.connectedClients.get(socket.id);
+        const clientInfo = this.connectedClients.get(socket.id);
         
         console.log(`🔌❌ [${timestamp}] Client disconnected:`, {
           socketId: socket.id,
-          clientIP: socket.handshake.address,
-          reason: reason,
-          userData: clientData || 'Not authenticated',
-          connectionDuration: clientData ? 
-            `${Math.round((Date.now() - clientData.connectedAt) / 1000)}s` : 'Unknown'
+          userId: clientInfo?.userId,
+          reason,
+          totalClients: this.io.sockets.sockets.size
         });
         
-        console.log(`📊 Total remaining clients: ${this.io.sockets.sockets.size - 1}`);
-        
-        // Log các camera rooms mà client này đang subscribe
-        const rooms = Array.from(socket.rooms).filter(room => room.startsWith('camera_'));
-        if (rooms.length > 0) {
-          console.log(`📹🚪 [${timestamp}] Client was subscribed to camera rooms:`, {
-            socketId: socket.id,
-            cameraRooms: rooms
-          });
-        }
-        
+        // Cleanup client info
         this.connectedClients.delete(socket.id);
       });
     });
@@ -532,6 +595,109 @@ class SocketService {
   // Lấy thông tin clients đang kết nối
   getConnectedClients() {
     return Array.from(this.connectedClients.values());
+  }
+
+  // Getter cho notification service
+  getNotificationService() {
+    return this.notificationService;
+  }
+
+  // Public methods để gửi thông báo
+  async notifyWorkingHoursRequest(workingHoursRequest) {
+    if (this.notificationService) {
+      await this.notificationService.notifyWorkingHoursRequest(workingHoursRequest);
+    }
+  }
+
+  async notifyAccessLogVerification(accessLog) {
+    if (this.notificationService) {
+      await this.notificationService.notifyAccessLogVerification(accessLog);
+    }
+  }
+
+  async notifyWorkingHoursRequestUpdate(workingHoursRequest, previousStatus) {
+    if (this.notificationService) {
+      await this.notificationService.notifyWorkingHoursRequestUpdate(workingHoursRequest, previousStatus);
+    }
+  }
+
+  async notifyAccessLogVerified(accessLog) {
+    if (this.notificationService) {
+      await this.notificationService.notifyAccessLogVerified(accessLog);
+    }
+  }
+
+  // Cập nhật trạng thái delivered cho notifications
+  async updateNotificationDeliveryStatus(userId, clientIP) {
+    try {
+      const { Notification } = await import('../models/index.js');
+      
+      // Tìm các notifications chưa delivered của user
+      const pendingNotifications = await Notification.find({
+        userId,
+        deliveryStatus: 'sent',
+        $or: [
+          { expiresAt: { $exists: false } },
+          { expiresAt: { $gt: new Date() } }
+        ]
+      });
+
+      if (pendingNotifications.length > 0) {
+        // Cập nhật trạng thái delivered
+        await Notification.updateMany(
+          {
+            userId,
+            deliveryStatus: 'sent',
+            $or: [
+              { expiresAt: { $exists: false } },
+              { expiresAt: { $gt: new Date() } }
+            ]
+          },
+          {
+            deliveryStatus: 'delivered',
+            deliveredAt: new Date(),
+            'metadata.receiverIP': clientIP
+          }
+        );
+
+        console.log(`📬 Updated ${pendingNotifications.length} notifications to delivered for user ${userId}`);
+      }
+    } catch (error) {
+      console.error('Error updating notification delivery status:', error);
+    }
+  }
+
+  // Cleanup expired notifications (có thể gọi định kỳ)
+  async cleanupExpiredNotifications() {
+    try {
+      if (this.notificationService) {
+        await this.notificationService.cleanupOldNotifications();
+      }
+    } catch (error) {
+      console.error('Error cleaning up notifications:', error);
+    }
+  }
+
+  // Method để broadcast system-wide notifications
+  async broadcastSystemNotification(notification) {
+    try {
+      // Gửi tới tất cả clients đang online
+      this.io.emit('system_notification', notification);
+      
+      // Lưu vào database cho tất cả users active
+      const { User } = await import('../models/index.js');
+      const activeUsers = await User.find({ isActive: true }, '_id');
+      
+      if (this.notificationService) {
+        for (const user of activeUsers) {
+          await this.notificationService.saveNotificationToDatabase(user._id, notification);
+        }
+      }
+      
+      console.log(`📢 System notification broadcasted to ${activeUsers.length} users`);
+    } catch (error) {
+      console.error('Error broadcasting system notification:', error);
+    }
   }
 
   // Method để log thống kê kết nối hiện tại
