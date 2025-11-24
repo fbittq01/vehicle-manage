@@ -6,6 +6,7 @@ import WorkingHours from './WorkingHours.js';
 import WorkingHoursRequest from './WorkingHoursRequest.js';
 import Department from './Department.js';
 import ActivityLog from './ActivityLog.js';
+import Notification from './Notification.js';
 
 export {
   User,
@@ -15,5 +16,6 @@ export {
   WorkingHours,
   WorkingHoursRequest,
   Department,
-  ActivityLog
+  ActivityLog,
+  Notification
 };

@@ -6,6 +6,9 @@ import connectDB from './config/database.js';
 import routes from './routes/index.js';
 import socketService from './socket/socketService.js';
 import { initializeDatabase } from './services/initService.js';
+import { setSocketService as setWorkingHoursSocketService } from './controllers/workingHoursRequestController.js';
+import { setSocketService as setAccessLogSocketService } from './controllers/accessLogController.js';
+import { setSocketService as setNotificationSocketService } from './controllers/notificationController.js';
 import {
   devLogger,
   prodLogger,
@@ -94,6 +97,38 @@ const startServer = async () => {
     
     // Khởi tạo Socket.IO với HTTP server
     const httpServer = socketService.initialize(app);
+    
+    // Inject socketService vào các controllers
+    setWorkingHoursSocketService(socketService);
+    setAccessLogSocketService(socketService);
+    setNotificationSocketService(socketService);
+    
+    console.log('✅ SocketService injected into controllers');
+    
+    // Thiết lập cleanup task cho notifications (chạy mỗi ngày lúc 2h sáng)
+    const setupNotificationCleanup = () => {
+      const now = new Date();
+      const tomorrow2AM = new Date(now);
+      tomorrow2AM.setDate(tomorrow2AM.getDate() + 1);
+      tomorrow2AM.setHours(2, 0, 0, 0);
+      
+      const timeUntilCleanup = tomorrow2AM.getTime() - now.getTime();
+      
+      setTimeout(() => {
+        // Chạy cleanup lần đầu
+        socketService.cleanupExpiredNotifications();
+        
+        // Sau đó chạy mỗi 24 giờ
+        setInterval(() => {
+          socketService.cleanupExpiredNotifications();
+        }, 24 * 60 * 60 * 1000); // 24 hours
+        
+      }, timeUntilCleanup);
+      
+      console.log('🧹 Notification cleanup scheduled for daily 2:00 AM');
+    };
+    
+    setupNotificationCleanup();
     
     // Start server
     httpServer.listen(PORT, () => {
