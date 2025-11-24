@@ -542,10 +542,38 @@ class SocketService {
     
     // Thống kê camera rooms
     const cameraRooms = new Map();
+    // Thống kê notification rooms
+    const notificationRooms = new Map();
+    // Thống kê user/role/department rooms
+    const userRooms = new Map();
+    const roleRooms = new Map();
+    const departmentRooms = new Map();
+    // Thống kê vehicle/gate rooms
+    const vehicleRooms = new Map();
+    const gateRooms = new Map();
+    
     this.io.sockets.adapter.rooms.forEach((sockets, roomName) => {
       if (roomName.startsWith('camera_')) {
         const cameraId = roomName.replace('camera_', '');
         cameraRooms.set(cameraId, sockets.size);
+      } else if (roomName.startsWith('notification_')) {
+        const notificationType = roomName.replace('notification_', '');
+        notificationRooms.set(notificationType, sockets.size);
+      } else if (roomName.startsWith('user_')) {
+        const userId = roomName.replace('user_', '');
+        userRooms.set(userId, sockets.size);
+      } else if (roomName.startsWith('role_')) {
+        const role = roomName.replace('role_', '');
+        roleRooms.set(role, sockets.size);
+      } else if (roomName.startsWith('department_')) {
+        const departmentId = roomName.replace('department_', '');
+        departmentRooms.set(departmentId, sockets.size);
+      } else if (roomName.startsWith('vehicle_')) {
+        const vehicleId = roomName.replace('vehicle_', '');
+        vehicleRooms.set(vehicleId, sockets.size);
+      } else if (roomName.startsWith('gate_')) {
+        const gateId = roomName.replace('gate_', '');
+        gateRooms.set(gateId, sockets.size);
       }
     });
 
@@ -554,7 +582,18 @@ class SocketService {
       authenticatedClients,
       unauthenticatedClients: totalClients - authenticatedClients,
       activeCameraStreams: cameraRooms.size,
-      cameraSubscriptions: Object.fromEntries(cameraRooms)
+      cameraSubscriptions: Object.fromEntries(cameraRooms),
+      notificationSubscriptions: {
+        totalTypes: notificationRooms.size,
+        byType: Object.fromEntries(notificationRooms)
+      },
+      roomSubscriptions: {
+        users: Object.fromEntries(userRooms),
+        roles: Object.fromEntries(roleRooms),
+        departments: Object.fromEntries(departmentRooms),
+        vehicles: Object.fromEntries(vehicleRooms),
+        gates: Object.fromEntries(gateRooms)
+      }
     });
 
     // Log chi tiết clients đã authenticate
@@ -567,6 +606,19 @@ class SocketService {
           connectedFor: `${Math.round((Date.now() - client.connectedAt) / 1000)}s`
         }))
       );
+    }
+
+    // Log chi tiết notification rooms nếu có
+    if (notificationRooms.size > 0) {
+      console.log(`🔔 [${timestamp}] Notification Room Statistics:`, {
+        totalNotificationTypes: notificationRooms.size,
+        subscriptions: Object.fromEntries(
+          Array.from(notificationRooms.entries()).map(([type, count]) => [
+            type, 
+            { subscribers: count, description: this.getNotificationTypeDescription(type) }
+          ])
+        )
+      });
     }
   }
   // Tự động log thống kê mỗi 30 giây nếu có client kết nối
