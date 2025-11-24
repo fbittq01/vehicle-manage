@@ -188,6 +188,8 @@ export const createAccessLogLogic = async (logData) => {
   // Gửi thông báo nếu cần verification thủ công
   if (populatedLog.verificationStatus === 'pending' && socketServiceInstance) {
     try {
+      console.log('Sending access log verification notification via socketService');
+      
       await socketServiceInstance.notifyAccessLogVerification(populatedLog);
     } catch (error) {
       console.error('Error sending access log verification notification:', error);

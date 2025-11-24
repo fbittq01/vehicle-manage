@@ -65,6 +65,14 @@ class SocketService {
         try {
           const { userId, role, departmentId, token } = data;
           
+          // Debug logging để kiểm tra dữ liệu từ frontend
+          console.log(`🔍 [${timestamp}] Authentication request received:`, {
+            socketId: socket.id,
+            receivedData: { userId, role, departmentId, hasToken: !!token },
+            clientIP: socket.handshake.address,
+            userAgent: socket.handshake.headers['user-agent']?.substring(0, 100)
+          });
+          
           // TODO: Có thể thêm logic xác thực JWT token ở đây
           // const decoded = jwt.verify(token, process.env.JWT_SECRET);
           
@@ -88,12 +96,13 @@ class SocketService {
             socket.join(`department_${departmentId}`);
           }
           
-          console.log(`🔐 [${timestamp}] User authenticated:`, {
+          console.log(`🔐 [${timestamp}] User authenticated successfully:`, {
             socketId: socket.id,
             userId,
             role,
             departmentId,
-            rooms: Array.from(socket.rooms)
+            rooms: Array.from(socket.rooms),
+            storedClientInfo: this.connectedClients.get(socket.id)
           });
           
           socket.emit('authenticated', { 
@@ -787,13 +796,100 @@ class SocketService {
       });
     }
   }
+  
+  // Helper method để mô tả các loại notification
+  getNotificationTypeDescription(type) {
+    const descriptions = {
+      'working_hours_request': 'Yêu cầu đăng ký giờ làm việc',
+      'access_log_verification': 'Xác thực log ra vào',
+      'system_alert': 'Cảnh báo hệ thống',
+      'vehicle_detection': 'Phát hiện phương tiện',
+      'manual_verification': 'Xác thực thủ công',
+      'working_hours_approved': 'Giờ làm việc được duyệt',
+      'working_hours_rejected': 'Giờ làm việc bị từ chối',
+      'access_denied': 'Từ chối truy cập',
+      'security_alert': 'Cảnh báo bảo mật'
+    };
+    
+    return descriptions[type] || 'Loại thông báo không xác định';
+  }
+  
+  // Debug method để kiểm tra chi tiết rooms và clients
+  debugRoomAndClientInfo() {
+    const timestamp = new Date().toISOString();
+    
+    console.log(`🔧 [${timestamp}] Debug Room & Client Information:`);
+    
+    // Chi tiết về từng client đã authenticate
+    console.log(`📋 Authenticated Clients Detail:`);
+    this.connectedClients.forEach((clientInfo, socketId) => {
+      const socket = this.io.sockets.sockets.get(socketId);
+      console.log(`  Client ${socketId}:`, {
+        userId: clientInfo.userId,
+        role: clientInfo.role,
+        departmentId: clientInfo.departmentId,
+        connectedAt: clientInfo.connectedAt,
+        isConnected: !!socket,
+        currentRooms: socket ? Array.from(socket.rooms) : 'Disconnected'
+      });
+    });
+    
+    // Chi tiết về role rooms
+    console.log(`🎭 Role Rooms Detail:`);
+    this.io.sockets.adapter.rooms.forEach((sockets, roomName) => {
+      if (roomName.startsWith('role_')) {
+        const role = roomName.replace('role_', '');
+        const socketIds = Array.from(sockets);
+        console.log(`  Room ${roomName}:`, {
+          role: role,
+          subscriberCount: sockets.size,
+          socketIds: socketIds,
+          clients: socketIds.map(socketId => {
+            const clientInfo = this.connectedClients.get(socketId);
+            return clientInfo ? `${clientInfo.userId}(${clientInfo.role})` : `Unknown(${socketId})`;
+          })
+        });
+      }
+    });
+    
+    // Kiểm tra inconsistency giữa stored role và room subscription
+    console.log(`⚠️  Role Consistency Check:`);
+    this.connectedClients.forEach((clientInfo, socketId) => {
+      const socket = this.io.sockets.sockets.get(socketId);
+      if (socket) {
+        const expectedRoleRoom = `role_${clientInfo.role}`;
+        const isInCorrectRoleRoom = socket.rooms.has(expectedRoleRoom);
+        const currentRoleRooms = Array.from(socket.rooms).filter(room => room.startsWith('role_'));
+        
+        if (!isInCorrectRoleRoom || currentRoleRooms.length !== 1) {
+          console.log(`  ❌ INCONSISTENCY for ${socketId}:`, {
+            storedRole: clientInfo.role,
+            expectedRoom: expectedRoleRoom,
+            isInCorrectRoom: isInCorrectRoleRoom,
+            currentRoleRooms: currentRoleRooms,
+            allRooms: Array.from(socket.rooms)
+          });
+        } else {
+          console.log(`  ✅ CONSISTENT for ${socketId}: ${clientInfo.role}`);
+        }
+      }
+    });
+  }
+
   // Tự động log thống kê mỗi 30 giây nếu có client kết nối
   startPeriodicLogging() {
     setInterval(() => {
       if (this.io && this.io.sockets.sockets.size > 0) {
         this.logConnectionStats();
+        // Gọi debug info để kiểm tra consistency
+        this.debugRoomAndClientInfo();
       }
     }, 30000); // 30 seconds
+  }
+
+  // Method để manually trigger debug (có thể gọi từ API endpoint)
+  triggerDebugInfo() {
+    this.debugRoomAndClientInfo();
   }
 
   // Đóng connections
