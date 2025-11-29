@@ -106,7 +106,11 @@ const activityLogSchema = new mongoose.Schema({
       'RESTORE_DATA',
       'CLEAR_LOGS',
       'SYSTEM_MAINTENANCE',
-      'UPDATE_SETTINGS'
+      'UPDATE_SETTINGS',
+
+      // Notification actions
+      'VIEW_NOTIFICATION',
+      'UPDATE_NOTIFICATION',
     ]
   },
   resource: {

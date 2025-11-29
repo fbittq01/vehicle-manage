@@ -28,6 +28,7 @@ export const getNotifications = asyncHandler(async (req, res) => {
   if (priority) filter.priority = priority;
   if (isRead !== undefined) filter.isRead = isRead === 'true';
 
+  console.log("🚀 ~ filter:", filter)
   const [notifications, total] = await Promise.all([
     Notification.find(filter)
       .populate('metadata.sender.id', 'name username')
