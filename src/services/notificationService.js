@@ -200,6 +200,67 @@ class NotificationService {
   }
 
   /**
+   * Gửi thông báo khi có xe ra/vào (cho tất cả access log)
+   * @param {Object} accessLog - Access log của xe vừa ra/vào
+   */
+  async notifyVehicleAccess(accessLog) {
+    try {
+      // Populate thông tin access log
+      const populatedLog = await AccessLog
+        .findById(accessLog._id)
+        .populate({
+          path: 'owner',
+          select: 'name username department',
+          populate: {
+            path: 'department',
+            select: 'name code'
+          }
+        })
+        .populate('vehicle', 'brand model color description');
+
+      if (!populatedLog) return;
+
+      const notification = {
+        type: 'vehicle_access',
+        data: {
+          accessLogId: populatedLog._id,
+          licensePlate: populatedLog.licensePlate,
+          action: populatedLog.action,
+          gateId: populatedLog.gateId,
+          gateName: populatedLog.gateName,
+          owner: populatedLog.owner ? {
+            id: populatedLog.owner._id,
+            name: populatedLog.owner.name,
+            username: populatedLog.owner.username,
+            department: populatedLog.owner.department
+          } : null,
+          vehicle: populatedLog.vehicle,
+          confidence: populatedLog.recognitionData?.confidence,
+          verificationStatus: populatedLog.verificationStatus,
+          isVehicleRegistered: populatedLog.isVehicleRegistered,
+          timestamp: populatedLog.createdAt,
+          metadata: populatedLog.metadata
+        },
+        title: 'Xe ra/vào',
+        message: `Xe ${populatedLog.licensePlate} ${populatedLog.action === 'entry' ? 'vào' : 'ra'} tại ${populatedLog.gateName || populatedLog.gateId}`,
+        timestamp: new Date(),
+        priority: 'normal'
+      };
+
+      // Gửi thông báo tới tất cả supervisor
+      await this.notifySupervisors(notification);
+
+      // Gửi thông báo tới room supervisor để các supervisor online nhận ngay
+      this.socketService.io?.to('role_supervisor').emit('vehicle_access', notification);
+
+      console.log(`🚗 Vehicle access notification sent to supervisors: ${populatedLog.licensePlate} ${populatedLog.action} at ${populatedLog.gateName || populatedLog.gateId}`);
+
+    } catch (error) {
+      console.error('Error in notifyVehicleAccess:', error);
+    }
+  }
+
+  /**
    * Gửi thông báo tới các admin trong department và department cha
    * @param {string} departmentId - ID của department
    * @param {Object} notification - Thông báo cần gửi

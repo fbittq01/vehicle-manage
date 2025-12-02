@@ -185,6 +185,17 @@ export const createAccessLogLogic = async (logData) => {
     .populate('owner', 'name username phone')
     .populate('verifiedBy', 'name username');
 
+  // Gửi thông báo vehicle access cho tất cả access log
+  if (socketServiceInstance) {
+    try {
+      console.log('Sending vehicle access notification via socketService');
+      
+      await socketServiceInstance.notifyVehicleAccess(populatedLog);
+    } catch (error) {
+      console.error('Error sending vehicle access notification:', error);
+    }
+  }
+
   // Gửi thông báo nếu cần verification thủ công
   if (populatedLog.verificationStatus === 'pending' && socketServiceInstance) {
     try {
