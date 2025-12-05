@@ -624,16 +624,6 @@ export const approvalRequestSchema = Joi.object({
     .optional()
     .messages({
       'string.max': 'Ghi chú phê duyệt không được vượt quá 300 ký tự'
-    }),
-  
-  validHours: Joi.number()
-    .min(1)
-    .max(168) // Tối đa 1 tuần
-    .default(24)
-    .optional()
-    .messages({
-      'number.min': 'Thời gian hiệu lực phải ít nhất 1 giờ',
-      'number.max': 'Thời gian hiệu lực không được quá 168 giờ (1 tuần)'
     })
 });
 
