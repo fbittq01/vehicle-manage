@@ -94,7 +94,7 @@ const workingHoursRequestSchema = new mongoose.Schema({
     ref: 'AccessLog'
   }],
   
-  // Thời gian hiệu lực (mặc định là 1 ngày từ thời điểm được phê duyệt)
+  // Thời gian hiệu lực (được tính dựa trên plannedDateTime hoặc plannedEndDateTime)
   validUntil: {
     type: Date
   },
@@ -221,8 +221,14 @@ workingHoursRequestSchema.statics.autoExpireRequests = function() {
 workingHoursRequestSchema.pre('save', function(next) {
   // Tự động set validUntil khi được approve
   if (this.isModified('status') && this.status === 'approved' && !this.validUntil) {
-    // Hiệu lực trong 24 giờ từ thời điểm approve
-    this.validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    // Xác định thời gian hết hạn dựa trên loại yêu cầu
+    if (this.requestType === 'both' && this.plannedEndDateTime) {
+      // Nếu là yêu cầu both và có plannedEndDateTime, dùng plannedEndDateTime
+      this.validUntil = new Date(this.plannedEndDateTime);
+    } else {
+      // Các trường hợp khác dùng plannedDateTime
+      this.validUntil = new Date(this.plannedDateTime);
+    }
     this.approvedAt = new Date();
   }
   

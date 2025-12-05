@@ -191,7 +191,7 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
     request.status = 'approved';
     request.approvedBy = req.user._id;
     request.approvedAt = new Date();
-    request.validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // Hết hạn sau 24 giờ
+    // validUntil sẽ được tự động set trong pre-save middleware
     request.approvalNote = `Tự động phê duyệt - Được tạo bởi admin ${req.user.name}`;
     await request.save();
     
@@ -293,7 +293,7 @@ export const cancelWorkingHoursRequest = asyncHandler(async (req, res) => {
 // Phê duyệt yêu cầu (admin/super admin)
 export const approveWorkingHoursRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { approvalNote, validHours = 24 } = req.body;
+  const { approvalNote } = req.body;
 
   const request = await WorkingHoursRequest.findById(id)
     .populate('requestedBy', 'name username employeeId department');
@@ -309,7 +309,7 @@ export const approveWorkingHoursRequest = asyncHandler(async (req, res) => {
   request.status = 'approved';
   request.approvedBy = req.user._id;
   request.approvedAt = new Date();
-  request.validUntil = new Date(Date.now() + validHours * 60 * 60 * 1000);
+  // validUntil sẽ được tự động set trong pre-save middleware
   
   if (approvalNote) {
     request.approvalNote = approvalNote.trim();
