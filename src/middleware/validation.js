@@ -208,10 +208,8 @@ export const verifyAccessLogSchema = Joi.object({
     }),
   correctedData: Joi.object({
     licensePlate: Joi.string()
-      .pattern(/^[0-9]{2}[A-Z]{1,2}[\s\-]?[0-9]{3,5}$/)
       .required()
       .messages({
-        'string.pattern.base': 'Biển số xe không đúng định dạng (VD: 29A-12345)',
         'any.required': 'Biển số xe là bắt buộc khi sửa thông tin'
       }),
     confidence: Joi.number()
