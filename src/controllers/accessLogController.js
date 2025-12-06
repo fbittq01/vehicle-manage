@@ -84,7 +84,10 @@ export const getAccessLogById = asyncHandler(async (req, res) => {
   const log = await AccessLog.findById(id)
     .populate('vehicle', 'licensePlate vehicleType name color owner')
     .populate('owner', 'name username phone department')
-    .populate('verifiedBy', 'name username');
+    .populate('verifiedBy', 'name username')
+    .populate('camera', 'name location type')
+    .populate('metadata.workingHoursRequest.requestedBy', 'name username')
+    .populate('metadata.workingHoursRequest.approvedBy', 'name username');
   
   if (!log) {
     return sendErrorResponse(res, 'Không tìm thấy access log', 404);
@@ -96,7 +99,20 @@ export const getAccessLogById = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Không có quyền xem access log này', 403);
   }
 
-  sendSuccessResponse(res, { log }, 'Lấy thông tin access log thành công');
+  // Đảm bảo trả về đầy đủ thông tin video và media
+  const logData = {
+    ...log.toObject(),
+    // Đảm bảo recognitionData được trả về đầy đủ bao gồm video
+    recognitionData: {
+      ...log.recognitionData,
+      // Giữ nguyên tất cả các field trong recognitionData
+      videoUrl: log.recognitionData?.videoUrl || null,
+      processedImage: log.recognitionData?.processedImage || null,
+      originalImage: log.recognitionData?.originalImage || null
+    }
+  };
+
+  sendSuccessResponse(res, { log: logData }, 'Lấy thông tin access log thành công');
 });
 
 // Core business logic for creating access log (reusable)
@@ -741,7 +757,8 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
 
   const filter = {
     createdAt: { $gte: start, $lte: end },
-    owner: { $exists: true }
+    owner: { $exists: true },
+    verificationStatus: { $in: ['auto_approved', 'approved'] }
   };
 
   // Nếu user thường, chỉ xem vi phạm của mình
@@ -776,10 +793,18 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
       const hasApprovedRequest = log.metadata?.workingHoursRequest?.requestId;
       if (lateCheck.isLate && !hasApprovedRequest) {
         userViolations[userId].lateEntries.push({
+          logId: log._id,
           date: log.createdAt.toISOString().split('T')[0],
           time: log.createdAt.toTimeString().substring(0, 5),
           lateMinutes: lateCheck.lateMinutes,
-          licensePlate: log.licensePlate
+          licensePlate: log.licensePlate,
+          evidenceImages: {
+            processedImage: log.recognitionData?.processedImage || null,
+            originalImage: log.recognitionData?.originalImage || null
+          },
+          videoUrl: log.recognitionData?.videoUrl || null,
+          gateName: log.gateName,
+          confidence: log.recognitionData?.confidence
         });
         userViolations[userId].totalViolations++;
       }
@@ -789,10 +814,18 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
       const hasApprovedRequest = log.metadata?.workingHoursRequest?.requestId;
       if (earlyCheck.isEarly && !hasApprovedRequest) {
         userViolations[userId].earlyExits.push({
+          logId: log._id,
           date: log.createdAt.toISOString().split('T')[0],
           time: log.createdAt.toTimeString().substring(0, 5),
           earlyMinutes: earlyCheck.earlyMinutes,
-          licensePlate: log.licensePlate
+          licensePlate: log.licensePlate,
+          evidenceImages: {
+            processedImage: log.recognitionData?.processedImage || null,
+            originalImage: log.recognitionData?.originalImage || null
+          },
+          videoUrl: log.recognitionData?.videoUrl || null,
+          gateName: log.gateName,
+          confidence: log.recognitionData?.confidence
         });
         userViolations[userId].totalViolations++;
       }
