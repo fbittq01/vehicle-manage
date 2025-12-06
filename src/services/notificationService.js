@@ -200,6 +200,53 @@ class NotificationService {
   }
 
   /**
+   * Gửi thông báo khi có xe lạ (không đăng ký)
+   * @param {Object} accessLog - Access log của xe lạ
+   */
+  async notifyUnknownVehicle(accessLog) {
+    try {
+      // Populate thông tin access log
+      const populatedLog = await AccessLog
+        .findById(accessLog._id)
+        .populate('vehicle', 'brand model color description');
+
+      if (!populatedLog) return;
+
+      const notification = {
+        type: 'unknown_vehicle_access',
+        data: {
+          accessLogId: populatedLog._id,
+          licensePlate: populatedLog.licensePlate,
+          action: populatedLog.action,
+          gateId: populatedLog.gateId,
+          gateName: populatedLog.gateName,
+          confidence: populatedLog.recognitionData?.confidence,
+          verificationStatus: populatedLog.verificationStatus,
+          isVehicleRegistered: false,
+          createdAt: populatedLog.createdAt,
+          metadata: populatedLog.metadata,
+          deviceInfo: populatedLog.deviceInfo
+        },
+        title: '⚠️ Xe lạ phát hiện',
+        message: `Xe lạ ${populatedLog.licensePlate} ${populatedLog.action === 'entry' ? 'vào' : 'ra'} tại ${populatedLog.gateName || populatedLog.gateId} - Cần kiểm tra ngay`,
+        timestamp: new Date(),
+        priority: 'high'
+      };
+
+      // Gửi thông báo tới tất cả supervisor
+      await this.notifySupervisors(notification);
+
+      // Gửi thông báo tới room supervisor với event riêng cho xe lạ
+      this.socketService.io?.to('role_supervisor').emit('unknown_vehicle_access', notification);
+
+      console.log(`🚨 Unknown vehicle notification sent to supervisors: ${populatedLog.licensePlate} ${populatedLog.action} at ${populatedLog.gateName || populatedLog.gateId}`);
+
+    } catch (error) {
+      console.error('Error in notifyUnknownVehicle:', error);
+    }
+  }
+
+  /**
    * Gửi thông báo khi có xe ra/vào (cho tất cả access log)
    * @param {Object} accessLog - Access log của xe vừa ra/vào
    */
@@ -453,7 +500,9 @@ class NotificationService {
       'working_hours_request': 'WorkingHoursRequest',
       'working_hours_request_update': 'WorkingHoursRequest',
       'access_log_verification': 'AccessLog',
-      'access_log_verified': 'AccessLog'
+      'access_log_verified': 'AccessLog',
+      'unknown_vehicle_access': 'AccessLog',
+      'vehicle_access': 'AccessLog'
     };
     return modelMap[notificationType] || null;
   }
@@ -481,6 +530,12 @@ class NotificationService {
         break;
       case 'access_log_verified':
         daysToExpire = 7; // Kết quả verify hết hạn sau 7 ngày
+        break;
+      case 'unknown_vehicle_access':
+        daysToExpire = 2; // Thông báo xe lạ hết hạn sau 2 ngày
+        break;
+      case 'vehicle_access':
+        daysToExpire = 3; // Thông báo xe ra/vào hết hạn sau 3 ngày
         break;
       case 'emergency_alert':
         daysToExpire = 1; // Cảnh báo khẩn cấp hết hạn sau 1 ngày
