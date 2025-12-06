@@ -105,12 +105,13 @@ class NotificationService {
           confidence: populatedLog.recognitionData?.confidence,
           verificationStatus: populatedLog.verificationStatus,
           isVehicleRegistered: populatedLog.isVehicleRegistered,
-          createdAt: populatedLog.createdAt
+          createdAt: populatedLog.createdAt,
+          media: this.prepareMediaInfo(populatedLog)
         },
         title: 'Access Log cần xác minh',
         message: `Xe ${populatedLog.licensePlate} ${populatedLog.action === 'entry' ? 'vào' : 'ra'} tại ${populatedLog.gateName || populatedLog.gateId} cần xác minh`,
         timestamp: new Date(),
-        priority: populatedLog.recognitionData?.confidence < 0.8 ? 'high' : 'normal'
+        priority: populatedLog.recognitionData?.confidence < 0.9 ? 'high' : 'normal'
       };
 
       // Gửi thông báo tới tất cả supervisor
@@ -225,7 +226,7 @@ class NotificationService {
           isVehicleRegistered: false,
           createdAt: populatedLog.createdAt,
           metadata: populatedLog.metadata,
-          deviceInfo: populatedLog.deviceInfo
+          media: this.prepareMediaInfo(populatedLog)
         },
         title: '⚠️ Xe lạ phát hiện',
         message: `Xe lạ ${populatedLog.licensePlate} ${populatedLog.action === 'entry' ? 'vào' : 'ra'} tại ${populatedLog.gateName || populatedLog.gateId} - Cần kiểm tra ngay`,
@@ -286,7 +287,8 @@ class NotificationService {
           verificationStatus: populatedLog.verificationStatus,
           isVehicleRegistered: populatedLog.isVehicleRegistered,
           timestamp: populatedLog.createdAt,
-          metadata: populatedLog.metadata
+          metadata: populatedLog.metadata,
+          media: this.prepareMediaInfo(populatedLog)
         },
         title: 'Xe ra/vào',
         message: `Xe ${populatedLog.licensePlate} ${populatedLog.action === 'entry' ? 'vào' : 'ra'} tại ${populatedLog.gateName || populatedLog.gateId}`,
@@ -662,6 +664,120 @@ class NotificationService {
       throw error;
     }
   }
+
+  /**
+   * Chuẩn bị thông tin media từ access log
+   * @param {Object} accessLog - Access log chứa recognition data
+   * @returns {Object} Media information object
+   */
+  prepareMediaInfo(accessLog) {
+    if (!accessLog) return null;
+
+    const recognitionData = accessLog.recognitionData || {};
+    const deviceInfo = accessLog.deviceInfo || {};
+
+    return {
+      // Hình ảnh - dựa trên schema thực tế
+      originalImage: this.createMediaUrl(recognitionData.originalImage),
+      processedImage: this.createMediaUrl(recognitionData.processedImage),
+      
+      // Video - theo schema
+      videoUrl: this.createMediaUrl(recognitionData.videoUrl),
+      
+      // Recognition data
+      confidence: recognitionData.confidence || 0,
+      processingTime: recognitionData.processingTime || null,
+      
+      // Bounding box thông tin
+      boundingBox: recognitionData.boundingBox || null,
+      
+      // Thông tin thiết bị từ schema thực tế
+      deviceInfo: {
+        cameraId: deviceInfo.cameraId || null,
+        deviceName: deviceInfo.deviceName || null,
+        ipAddress: deviceInfo.ipAddress || null
+      },
+      
+      // Thông tin cổng
+      gateInfo: {
+        gateId: accessLog.gateId || null,
+        gateName: accessLog.gateName || null
+      },
+      
+      // Thông tin thời gian
+      capturedAt: accessLog.createdAt,
+      
+      // Confidence level để UI dễ hiển thị
+      confidenceLevel: this.getConfidenceLevel(recognitionData.confidence || 0),
+      
+      // Flags hữu ích cho UI
+      hasVideo: !!recognitionData.videoUrl,
+      hasOriginalImage: !!recognitionData.originalImage,
+      hasProcessedImage: !!recognitionData.processedImage,
+      
+      // URLs để download (nếu cần)
+      downloadUrls: {
+        originalImage: recognitionData.originalImage || null,
+        processedImage: recognitionData.processedImage || null,
+        video: recognitionData.videoUrl || null
+      }
+    };
+  }
+
+  /**
+   * Tạo safe media URLs với base URL từ environment
+   * @param {string} filePath - Đường dẫn file
+   * @returns {string|null} Full URL hoặc null nếu không có file
+   */
+  createMediaUrl(filePath) {
+    if (!filePath) return null;
+    
+    const baseUrl = process.env.MEDIA_BASE_URL || 'http://localhost:5000';
+    // Đảm bảo filePath bắt đầu với /
+    const safePath = filePath.startsWith('/') ? filePath : `/${filePath}`;
+    return `${baseUrl}${safePath}`;
+  }
+
+  /**
+   * Tạo thông tin preview cho media (thumbnail, metadata)
+   * @param {Object} recognitionData - Recognition data từ access log
+   * @returns {Object} Preview information
+   */
+  createMediaPreview(recognitionData) {
+    if (!recognitionData) return null;
+
+    return {
+      // Thumbnail - ưu tiên processedImage làm thumbnail
+      thumbnail: this.createMediaUrl(recognitionData.processedImage) || 
+                this.createMediaUrl(recognitionData.originalImage),
+      
+      // Thông tin kỹ thuật cơ bản
+      confidence: recognitionData.confidence || 0,
+      processingTime: recognitionData.processingTime || 0,
+      
+      // Flags đơn giản cho UI
+      hasVideo: !!recognitionData.videoUrl,
+      hasOriginalImage: !!recognitionData.originalImage,
+      hasProcessedImage: !!recognitionData.processedImage,
+      
+      // Level cho UI styling
+      confidenceLevel: this.getConfidenceLevel(recognitionData.confidence || 0)
+    };
+  }
+
+  /**
+   * Xác định mức độ confidence cho UI
+   * @param {number} confidence - Confidence score (0-1)
+   * @returns {string} Confidence level
+   */
+  getConfidenceLevel(confidence) {
+    if (confidence >= 0.9) return 'high';
+    if (confidence >= 0.7) return 'medium';
+    if (confidence >= 0.5) return 'low';
+    return 'very-low';
+  }
+
+
 }
 
 export default NotificationService;

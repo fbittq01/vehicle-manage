@@ -94,6 +94,13 @@ export const getAccessLogById = asyncHandler(async (req, res) => {
   }
 
   // Kiểm tra quyền truy cập
+  // Supervisor và super_admin có thể xem tất cả access log
+  if (req.user.role === 'supervisor' || req.user.role === 'super_admin') {
+    // Supervisor có quyền xem tất cả
+    return sendSuccessResponse(res, { log }, 'Lấy thông tin access log thành công');
+  }
+
+  // Các role khác kiểm tra quyền theo department hoặc ownership
   const hasAccess = await checkResourceAccess(req.user, log, 'owner');
   if (!hasAccess) {
     return sendErrorResponse(res, 'Không có quyền xem access log này', 403);
