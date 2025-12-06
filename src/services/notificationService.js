@@ -639,6 +639,8 @@ class NotificationService {
         { 
           isRead: true, 
           readAt: new Date() 
+        }, {
+          upsert: true
         }
       );
 
