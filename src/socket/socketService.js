@@ -624,6 +624,12 @@ class SocketService {
     }
   }
 
+  async notifyVehicleAccess(accessLog) {
+    if (this.notificationService) {
+      await this.notificationService.notifyVehicleAccess(accessLog);
+    }
+  }
+
   async notifyAccessLogVerification(accessLog) {
     if (this.notificationService) {
       await this.notificationService.notifyAccessLogVerification(accessLog);

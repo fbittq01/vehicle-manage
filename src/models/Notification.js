@@ -19,7 +19,9 @@ const notificationSchema = new mongoose.Schema({
         'access_log_verification',
         'access_log_verified',
         'system_maintenance',
-        'emergency_alert'
+        'emergency_alert',
+        'vehicle_access',
+        'unknown_vehicle_access'
       ],
       message: '{VALUE} không phải là loại thông báo hợp lệ'
     },
