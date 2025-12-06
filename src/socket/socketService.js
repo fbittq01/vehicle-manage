@@ -618,6 +618,12 @@ class SocketService {
     }
   }
 
+  async notifyUnknownVehicle(accessLog) {
+    if (this.notificationService) {
+      await this.notificationService.notifyUnknownVehicle(accessLog);
+    }
+  }
+
   async notifyAccessLogVerification(accessLog) {
     if (this.notificationService) {
       await this.notificationService.notifyAccessLogVerification(accessLog);
