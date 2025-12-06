@@ -254,7 +254,7 @@ export const createAccessLog = asyncHandler(async (req, res) => {
 // Verify access log (admin only)
 export const verifyAccessLog = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { status, note, guestInfo } = req.body;
+  const { status, note, guestInfo, correctedData } = req.body;
 
   if (!['approved', 'rejected'].includes(status)) {
     return sendErrorResponse(res, 'Trạng thái verify không hợp lệ', 400);
@@ -269,13 +269,55 @@ export const verifyAccessLog = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Access log đã được verify', 400);
   }
 
+  // Xử lý cập nhật thông tin biển số nếu có correctedData
+  let vehicleInfo = null;
+  let ownerInfo = null;
+  let isVehicleRegistered = accessLog.isVehicleRegistered;
+  
+  if (correctedData && correctedData.licensePlate) {
+    // Validate và chuẩn hóa biển số mới
+    const correctedLicensePlate = normalizeLicensePlate(correctedData.licensePlate);
+    
+    if (!correctedLicensePlate || correctedLicensePlate.length < 3) {
+      return sendErrorResponse(res, 'Biển số không hợp lệ', 400);
+    }
+
+    // Tìm kiếm thông tin xe và chủ sở hữu từ biển số mới
+    vehicleInfo = await Vehicle.findOne({ licensePlate: correctedLicensePlate });
+    
+    if (vehicleInfo) {
+      ownerInfo = await User.findById(vehicleInfo.owner);
+      isVehicleRegistered = true;
+      
+      // Cập nhật thông tin xe và chủ sở hữu
+      accessLog.vehicle = vehicleInfo._id;
+      accessLog.owner = vehicleInfo.owner;
+      accessLog.isVehicleRegistered = true;
+    } else {
+      // Xe chưa đăng ký - xóa thông tin xe và chủ sở hữu cũ
+      accessLog.vehicle = null;
+      accessLog.owner = null;
+      accessLog.isVehicleRegistered = false;
+      isVehicleRegistered = false;
+    }
+
+    // Cập nhật biển số và đánh dấu đã được sửa
+    accessLog.licensePlate = correctedLicensePlate;
+
+    // Cập nhật độ tin cậy nếu có
+    if (correctedData.confidence !== undefined) {
+      accessLog.recognitionData.confidence = Math.min(Math.max(correctedData.confidence, 0), 1);
+    }
+  }
+
+  // Cập nhật trạng thái verify
   accessLog.verificationStatus = status;
   accessLog.verifiedBy = req.user._id;
   accessLog.verificationTime = new Date();
   accessLog.verificationNote = note;
 
   // Thêm thông tin khách nếu xe chưa đăng ký và được approve
-  if (status === 'approved' && !accessLog.isVehicleRegistered && guestInfo) {
+  if (status === 'approved' && !isVehicleRegistered && guestInfo) {
     // Validate thông tin khách cơ bản
     if (!guestInfo.name || !guestInfo.phone) {
       return sendErrorResponse(res, 'Tên và số điện thoại khách là bắt buộc', 400);
@@ -348,6 +390,92 @@ export const updateGuestInfo = asyncHandler(async (req, res) => {
     .populate('verifiedBy', 'name username');
 
   sendSuccessResponse(res, { log: populatedLog }, 'Cập nhật thông tin khách thành công');
+});
+
+// Cập nhật thông tin access log khi AI nhận diện sai (supervisor only)
+export const updateAccessLogInfo = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { licensePlate, confidence, note } = req.body;
+
+  const accessLog = await AccessLog.findById(id);
+  if (!accessLog) {
+    return sendErrorResponse(res, 'Không tìm thấy access log', 404);
+  }
+
+  // Chỉ cho phép cập nhật access log đang pending hoặc đã approved
+  if (!['pending', 'approved'].includes(accessLog.verificationStatus)) {
+    return sendErrorResponse(res, 'Không thể cập nhật access log đã bị từ chối', 400);
+  }
+
+  // Validate và chuẩn hóa biển số mới
+  const correctedLicensePlate = normalizeLicensePlate(licensePlate);
+  
+  if (!correctedLicensePlate || correctedLicensePlate.length < 3) {
+    return sendErrorResponse(res, 'Biển số không hợp lệ', 400);
+  }
+
+  // Lưu biển số gốc nếu chưa có
+  if (!accessLog.originalLicensePlate) {
+    accessLog.originalLicensePlate = accessLog.licensePlate;
+  }
+
+  // Tìm kiếm thông tin xe và chủ sở hữu từ biển số mới
+  const vehicleInfo = await Vehicle.findOne({ licensePlate: correctedLicensePlate });
+  
+  if (vehicleInfo) {
+    // Xe đã đăng ký - cập nhật thông tin xe và chủ sở hữu
+    accessLog.vehicle = vehicleInfo._id;
+    accessLog.owner = vehicleInfo.owner;
+    accessLog.isVehicleRegistered = true;
+    
+    // Xóa thông tin khách vãng lai nếu có
+    accessLog.guestInfo = undefined;
+  } else {
+    // Xe chưa đăng ký - xóa thông tin xe và chủ sở hữu cũ
+    accessLog.vehicle = null;
+    accessLog.owner = null;
+    accessLog.isVehicleRegistered = false;
+  }
+
+  // Cập nhật biển số và đánh dấu đã được sửa
+  accessLog.licensePlate = correctedLicensePlate;
+  accessLog.isCorrected = true;
+  accessLog.correctedBy = req.user._id;
+  accessLog.correctionTime = new Date();
+
+  // Cập nhật độ tin cậy nếu có
+  if (confidence !== undefined) {
+    accessLog.recognitionData.confidence = Math.min(Math.max(confidence, 0), 1);
+  }
+
+  // Thêm ghi chú nếu có
+  if (note) {
+    accessLog.verificationNote = note;
+  }
+
+  // Nếu access log chưa được verify, reset về pending để verify lại
+  if (accessLog.verificationStatus === 'approved') {
+    accessLog.verificationStatus = 'pending';
+    accessLog.verifiedBy = null;
+    accessLog.verificationTime = null;
+  }
+
+  await accessLog.save();
+
+  const populatedLog = await AccessLog.findById(accessLog._id)
+    .populate('vehicle', 'licensePlate vehicleType name color')
+    .populate('owner', 'name username phone')
+    .populate('verifiedBy', 'name username')
+    .populate('correctedBy', 'name username');
+
+  // Broadcast update result
+  const { default: socketService } = await import('../socket/socketService.js');
+  socketService.broadcast('access_log_corrected', {
+    accessLog: populatedLog,
+    correctedBy: req.user
+  });
+
+  sendSuccessResponse(res, { log: populatedLog }, 'Cập nhật thông tin access log thành công');
 });
 
 // Tìm kiếm logs theo thông tin khách
