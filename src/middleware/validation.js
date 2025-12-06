@@ -166,6 +166,98 @@ export const accessLogSchema = Joi.object({
   }).optional()
 });
 
+// Update Access Log Info Schema
+export const updateAccessLogInfoSchema = Joi.object({
+  licensePlate: Joi.string()
+    .pattern(/^[0-9]{2}[A-Z]{1,2}[\s\-]?[0-9]{3,5}$/)
+    .required()
+    .messages({
+      'string.pattern.base': 'Biển số xe không đúng định dạng (VD: 29A-12345)',
+      'any.required': 'Biển số xe là bắt buộc'
+    }),
+  confidence: Joi.number()
+    .min(0)
+    .max(1)
+    .optional()
+    .messages({
+      'number.min': 'Độ tin cậy phải từ 0 đến 1',
+      'number.max': 'Độ tin cậy phải từ 0 đến 1'
+    }),
+  note: Joi.string()
+    .max(500)
+    .optional()
+    .messages({
+      'string.max': 'Ghi chú không được vượt quá 500 ký tự'
+    })
+});
+
+// Verify Access Log Schema
+export const verifyAccessLogSchema = Joi.object({
+  status: Joi.string()
+    .valid('approved', 'rejected')
+    .required()
+    .messages({
+      'any.only': 'Trạng thái chỉ có thể là approved hoặc rejected',
+      'any.required': 'Trạng thái verify là bắt buộc'
+    }),
+  note: Joi.string()
+    .max(500)
+    .optional()
+    .messages({
+      'string.max': 'Ghi chú không được vượt quá 500 ký tự'
+    }),
+  correctedData: Joi.object({
+    licensePlate: Joi.string()
+      .pattern(/^[0-9]{2}[A-Z]{1,2}[\s\-]?[0-9]{3,5}$/)
+      .required()
+      .messages({
+        'string.pattern.base': 'Biển số xe không đúng định dạng (VD: 29A-12345)',
+        'any.required': 'Biển số xe là bắt buộc khi sửa thông tin'
+      }),
+    confidence: Joi.number()
+      .min(0)
+      .max(1)
+      .optional()
+      .messages({
+        'number.min': 'Độ tin cậy phải từ 0 đến 1',
+        'number.max': 'Độ tin cậy phải từ 0 đến 1'
+      })
+  }).optional(),
+  guestInfo: Joi.object({
+    name: Joi.string()
+      .min(2)
+      .max(100)
+      .required()
+      .messages({
+        'string.min': 'Tên khách phải có ít nhất 2 ký tự',
+        'string.max': 'Tên khách không được vượt quá 100 ký tự',
+        'any.required': 'Tên khách là bắt buộc'
+      }),
+    phone: Joi.string()
+      .pattern(/^[0-9]{10,11}$/)
+      .required()
+      .messages({
+        'string.pattern.base': 'Số điện thoại phải có 10-11 chữ số',
+        'any.required': 'Số điện thoại là bắt buộc'
+      }),
+    idCard: Joi.string()
+      .max(20)
+      .optional(),
+    hometown: Joi.string()
+      .max(200)
+      .optional(),
+    visitPurpose: Joi.string()
+      .max(200)
+      .optional(),
+    contactPerson: Joi.string()
+      .max(100)
+      .optional(),
+    notes: Joi.string()
+      .max(500)
+      .optional()
+  }).optional()
+});
+
 export const updateUserSchema = Joi.object({
   name: Joi.string()
     .min(2)
@@ -760,6 +852,8 @@ export const validateLogin = validate(loginSchema);
 export const validateVehicle = validate(vehicleSchema);
 export const validateUpdateVehicle = validate(updateVehicleSchema);
 export const validateAccessLog = validate(accessLogSchema);
+export const validateVerifyAccessLog = validate(verifyAccessLogSchema);
+export const validateUpdateAccessLogInfo = validate(updateAccessLogInfoSchema);
 export const validateUpdateUser = validate(updateUserSchema);
 export const validateChangePassword = validate(changePasswordSchema);
 export const validateCamera = validate(cameraSchema);

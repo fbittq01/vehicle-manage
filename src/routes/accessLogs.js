@@ -5,6 +5,7 @@ import {
   createAccessLog,
   verifyAccessLog,
   updateGuestInfo,
+  updateAccessLogInfo,
   getLogsByLicensePlate,
   getLogsByGuestInfo,
   getLogsByDateRange,
@@ -27,7 +28,9 @@ import {
   optionalAuth
 } from '../middleware/auth.js';
 import {
-  validateAccessLog
+  validateAccessLog,
+  validateVerifyAccessLog,
+  validateUpdateAccessLogInfo
 } from '../middleware/validation.js';
 import {
   recognitionLimiter
@@ -63,9 +66,10 @@ router.get('/:id', activityMiddleware('VIEW_ACCESS_LOG', 'access_logs'), getAcce
 router.delete('/:id', requireAdmin, activityMiddleware('DELETE_ACCESS_LOG', 'access_logs'), deleteAccessLog);
 
 // Supervisor có thể verify access log và cập nhật thông tin khách vãng lai
-router.put('/:id/verify', requireSupervisor, activityMiddleware('UPDATE_ACCESS_LOG', 'access_logs'), verifyAccessLog);
+router.put('/:id/verify', requireSupervisor, validateVerifyAccessLog, activityMiddleware('UPDATE_ACCESS_LOG', 'access_logs'), verifyAccessLog);
 router.put('/:id/approve', requireSupervisor, activityMiddleware('UPDATE_ACCESS_LOG', 'access_logs'), approveAccessLog);
 router.put('/:id/reject', requireSupervisor, activityMiddleware('UPDATE_ACCESS_LOG', 'access_logs'), rejectAccessLog);
 router.put('/:id/guest-info', requireSupervisor, activityMiddleware('UPDATE_ACCESS_LOG', 'access_logs'), updateGuestInfo);
+router.put('/:id/correct-info', requireSupervisor, validateUpdateAccessLogInfo, activityMiddleware('UPDATE_ACCESS_LOG', 'access_logs'), updateAccessLogInfo);
 
 export default router;
