@@ -68,14 +68,70 @@ export const getDepartmentById = asyncHandler(async (req, res) => {
 
 // Tạo phòng ban mới
 export const createDepartment = asyncHandler(async (req, res) => {
+  const { 
+    name, 
+    description, 
+    parentId, 
+    manager, 
+    isActive, 
+    code,
+    ...otherFields 
+  } = req.body;
+
+  // Validate required fields
+  if (!name) {
+    return sendErrorResponse(res, 'Tên phòng ban là bắt buộc', 400);
+  }
+  if (!code) {
+    return sendErrorResponse(res, 'Mã phòng ban là bắt buộc', 400);
+  }
+
+  // Chuẩn bị dữ liệu phòng ban
   const departmentData = {
-    ...req.body,
-    createdBy: req.user.id
+    name,
+    code,
+    createdBy: req.user.id,
+    ...otherFields
   };
 
+  // Thêm description nếu có
+  if (description !== undefined) {
+    departmentData.description = description;
+  }
+
+  // Xử lý parentId (chuyển thành parentDepartment)
+  if (parentId) {
+    const parentDept = await Department.findById(parentId);
+    if (!parentDept) {
+      return sendErrorResponse(res, 'Phòng ban cha không tồn tại', 400);
+    }
+    if (!parentDept.isActive) {
+      return sendErrorResponse(res, 'Phòng ban cha không còn hoạt động', 400);
+    }
+    departmentData.parentDepartment = parentId;
+  }
+
+  // Xử lý manager (chuyển thành manager)
+  if (manager) {
+    const { User } = await import('../models/index.js');
+    const manager = await User.findById(manager);
+    if (!manager) {
+      return sendErrorResponse(res, 'Manager không tồn tại', 400);
+    }
+    if (!manager.isActive) {
+      return sendErrorResponse(res, 'Manager không còn hoạt động', 400);
+    }
+    departmentData.manager = manager;
+  }
+
+  // Xử lý status (chuyển thành isActive)
+  if (isActive !== undefined) {
+    departmentData.isActive = isActive;
+  }
+
   // Kiểm tra mã phòng ban đã tồn tại chưa
-  const existingDepartment = await Department.findOne({ code: departmentData.code });
-  if (existingDepartment) {
+  const existingCode = await Department.findOne({ code: departmentData.code });
+  if (existingCode) {
     return sendErrorResponse(res, 'Mã phòng ban đã tồn tại', 400);
   }
 
@@ -85,22 +141,11 @@ export const createDepartment = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Tên phòng ban đã tồn tại', 400);
   }
 
-  // Kiểm tra parent department có tồn tại không
-  if (departmentData.parentDepartment) {
-    const parentDept = await Department.findById(departmentData.parentDepartment);
-    if (!parentDept) {
-      return sendErrorResponse(res, 'Phòng ban cha không tồn tại', 400);
-    }
-    if (!parentDept.isActive) {
-      return sendErrorResponse(res, 'Phòng ban cha không còn hoạt động', 400);
-    }
-  }
-
   const department = new Department(departmentData);
   await department.save();
 
   // Populate thông tin sau khi tạo
-  await department.populate('manager', 'name username');
+  await department.populate('manager', 'name username email phone');
   await department.populate('parentDepartment', 'name code');
   await department.populate('createdBy', 'name username');
 
@@ -110,7 +155,15 @@ export const createDepartment = asyncHandler(async (req, res) => {
 // Cập nhật thông tin phòng ban
 export const updateDepartment = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const updateData = req.body;
+  const { 
+    name, 
+    description, 
+    parentId, 
+    manager, 
+    isActive, 
+    code,
+    ...otherFields 
+  } = req.body;
 
   const department = await Department.findById(id);
   if (!department) {
@@ -122,50 +175,96 @@ export const updateDepartment = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Không có quyền cập nhật phòng ban này', 403);
   }
 
-  // Kiểm tra mã phòng ban trùng lặp (nếu thay đổi)
-  if (updateData.code && updateData.code !== department.code) {
-    const existingCode = await Department.findOne({ 
-      code: updateData.code, 
-      _id: { $ne: id } 
-    });
-    if (existingCode) {
-      return sendErrorResponse(res, 'Mã phòng ban đã tồn tại', 400);
+  // Chuẩn bị dữ liệu cập nhật
+  const updateData = {};
+
+  // Cập nhật tên phòng ban
+  if (name !== undefined) {
+    if (name !== department.name) {
+      const existingName = await Department.findOne({ 
+        name: name, 
+        _id: { $ne: id } 
+      });
+      if (existingName) {
+        return sendErrorResponse(res, 'Tên phòng ban đã tồn tại', 400);
+      }
+    }
+    updateData.name = name;
+  }
+
+  // Cập nhật mã phòng ban
+  if (code !== undefined) {
+    if (code !== department.code) {
+      const existingCode = await Department.findOne({ 
+        code: code, 
+        _id: { $ne: id } 
+      });
+      if (existingCode) {
+        return sendErrorResponse(res, 'Mã phòng ban đã tồn tại', 400);
+      }
+    }
+    updateData.code = code;
+  }
+
+  // Cập nhật mô tả
+  if (description !== undefined) {
+    updateData.description = description;
+  }
+
+  // Cập nhật parent department (sử dụng parentId thay vì parentDepartment)
+  if (parentId !== undefined) {
+    if (parentId) {
+      // Không cho phép set chính nó làm parent
+      if (parentId === id) {
+        return sendErrorResponse(res, 'Không thể đặt chính phòng ban này làm phòng ban cha', 400);
+      }
+
+      const parentDept = await Department.findById(parentId);
+      if (!parentDept) {
+        return sendErrorResponse(res, 'Phòng ban cha không tồn tại', 400);
+      }
+      if (!parentDept.isActive) {
+        return sendErrorResponse(res, 'Phòng ban cha không còn hoạt động', 400);
+      }
+      updateData.parentDepartment = parentId;
+    } else {
+      // Nếu parentId là null hoặc "", xóa parent department
+      updateData.parentDepartment = null;
     }
   }
 
-  // Kiểm tra tên phòng ban trùng lặp (nếu thay đổi)
-  if (updateData.name && updateData.name !== department.name) {
-    const existingName = await Department.findOne({ 
-      name: updateData.name, 
-      _id: { $ne: id } 
-    });
-    if (existingName) {
-      return sendErrorResponse(res, 'Tên phòng ban đã tồn tại', 400);
+  // Cập nhật manager (sử dụng manager thay vì manager)
+  if (manager !== undefined) {
+    if (manager) {
+      const { User } = await import('../models/index.js');
+      const managerById = await User.findById(manager);
+      if (!managerById) {
+        return sendErrorResponse(res, 'Manager không tồn tại', 400);
+      }
+      if (!managerById.isActive) {
+        return sendErrorResponse(res, 'Manager không còn hoạt động', 400);
+      }
+      updateData.manager = manager;
+    } else {
+      // Nếu manager là null hoặc "", xóa manager
+      updateData.manager = null;
     }
   }
 
-  // Kiểm tra parent department
-  if (updateData.parentDepartment) {
-    // Không cho phép set chính nó làm parent
-    if (updateData.parentDepartment === id) {
-      return sendErrorResponse(res, 'Không thể đặt chính phòng ban này làm phòng ban cha', 400);
-    }
-
-    const parentDept = await Department.findById(updateData.parentDepartment);
-    if (!parentDept) {
-      return sendErrorResponse(res, 'Phòng ban cha không tồn tại', 400);
-    }
-    if (!parentDept.isActive) {
-      return sendErrorResponse(res, 'Phòng ban cha không còn hoạt động', 400);
-    }
+  // Cập nhật trạng thái (chuyển đổi status thành isActive)
+  if (isActive !== undefined) {
+    updateData.isActive = isActive;
   }
+
+  // Thêm các trường khác nếu có
+  Object.assign(updateData, otherFields);
 
   // Cập nhật thông tin
   Object.assign(department, updateData);
   await department.save();
 
   // Populate thông tin sau khi cập nhật
-  await department.populate('manager', 'name username');
+  await department.populate('manager', 'name username email phone');
   await department.populate('parentDepartment', 'name code');
   await department.populate('createdBy', 'name username');
 

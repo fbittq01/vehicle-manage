@@ -616,6 +616,64 @@ export const departmentSchema = Joi.object({
 
 export const updateDepartmentSchema = departmentSchema.fork(['name', 'code'], (schema) => schema.optional());
 
+// Department API validation schemas (sử dụng managerId và parentId thay vì manager và parentDepartment)
+export const departmentApiSchema = Joi.object({
+  name: Joi.string()
+    .min(1)
+    .max(100)
+    .trim()
+    .required()
+    .messages({
+      'string.min': 'Tên phòng ban không được để trống',
+      'string.max': 'Tên phòng ban không được vượt quá 100 ký tự',
+      'any.required': 'Tên phòng ban là bắt buộc'
+    }),
+  code: Joi.string()
+    .min(1)
+    .max(20)
+    .uppercase()
+    .trim()
+    .pattern(/^[A-Z0-9_]+$/)
+    .required()
+    .messages({
+      'string.min': 'Mã phòng ban không được để trống',
+      'string.max': 'Mã phòng ban không được vượt quá 20 ký tự',
+      'string.pattern.base': 'Mã phòng ban chỉ được chứa chữ cái viết hoa, số và dấu gạch dưới',
+      'any.required': 'Mã phòng ban là bắt buộc'
+    }),
+  description: Joi.string()
+    .max(500)
+    .trim()
+    .allow('')
+    .optional()
+    .messages({
+      'string.max': 'Mô tả không được vượt quá 500 ký tự'
+    }),
+  managerId: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .allow(null, '')
+    .optional()
+    .messages({
+      'string.pattern.base': 'Manager ID không hợp lệ'
+    }),
+  parentId: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .allow(null, '')
+    .optional()
+    .messages({
+      'string.pattern.base': 'Parent ID không hợp lệ'
+    }),
+  status: Joi.string()
+    .valid('active', 'inactive')
+    .optional()
+    .messages({
+      'any.only': 'Trạng thái phải là "active" hoặc "inactive"'
+    }),
+  isActive: Joi.boolean().optional()
+});
+
+export const updateDepartmentApiSchema = departmentApiSchema.fork(['name', 'code'], (schema) => schema.optional());
+
 // Working Hours Request Validation Schemas
 export const workingHoursRequestSchema = Joi.object({
   requestType: Joi.string()
@@ -861,8 +919,10 @@ export const validateUpdateWorkingHours = validate(updateWorkingHoursSchema);
 export const validateCheckWorkingTime = validateQuery(checkWorkingTimeSchema);
 export const validateWorkingHoursParams = validateParams(workingHoursParamsSchema);
 export const validateWorkingHoursQuery = validateQuery(workingHoursQuerySchema);
-export const validateDepartment = validate(departmentSchema);
-export const validateUpdateDepartment = validate(updateDepartmentSchema);
+export const validateDepartment = validate(departmentApiSchema);
+export const validateUpdateDepartment = validate(updateDepartmentApiSchema);
+export const validateDepartmentOriginal = validate(departmentSchema);
+export const validateUpdateDepartmentOriginal = validate(updateDepartmentSchema);
 export const validateWorkingHoursRequest = validate(workingHoursRequestSchema);
 export const validateUpdateWorkingHoursRequest = validate(updateWorkingHoursRequestSchema);
 export const validateApprovalRequest = validate(approvalRequestSchema);
