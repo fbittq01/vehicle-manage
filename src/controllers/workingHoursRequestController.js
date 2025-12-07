@@ -219,7 +219,7 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
 // Cập nhật yêu cầu (chỉ cho user tự cập nhật yêu cầu pending của mình)
 export const updateWorkingHoursRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { plannedDateTime, plannedEndDateTime, reason, metadata } = req.body;
+  const { requestType, plannedDateTime, plannedEndDateTime, licensePlate, reason, metadata } = req.body;
 
   const request = await WorkingHoursRequest.findById(id);
   
@@ -236,6 +236,48 @@ export const updateWorkingHoursRequest = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Chỉ có thể sửa yêu cầu đang chờ phê duyệt', 400);
   }
 
+  // Validate licensePlate nếu có thay đổi
+  if (licensePlate) {
+    const normalizedPlate = normalizeLicensePlate(licensePlate);
+    const vehicle = await Vehicle.findOne({ 
+      licensePlate: normalizedPlate, 
+      owner: request.requestedBy 
+    });
+    
+    if (!vehicle) {
+      return sendErrorResponse(res, 'Bạn không có quyền sử dụng biển số xe này', 403);
+    }
+
+    // Kiểm tra không có yêu cầu trùng lặp trong cùng khoảng thời gian với biển số mới
+    const plannedTime = plannedDateTime ? new Date(plannedDateTime) : request.plannedDateTime;
+    const existingRequest = await WorkingHoursRequest.findOne({
+      _id: { $ne: id }, // Loại trừ request hiện tại
+      requestedBy: request.requestedBy,
+      licensePlate: normalizedPlate,
+      status: { $in: ['pending', 'approved'] },
+      plannedDateTime: {
+        $gte: new Date(plannedTime.getTime() - 2 * 60 * 60 * 1000), // 2 giờ trước
+        $lte: new Date(plannedTime.getTime() + 2 * 60 * 60 * 1000)  // 2 giờ sau
+      }
+    });
+
+    if (existingRequest) {
+      return sendErrorResponse(res, 'Đã có yêu cầu tương tự trong khoảng thời gian này với biển số này', 400);
+    }
+
+    request.licensePlate = normalizedPlate;
+  }
+
+  // Update requestType
+  if (requestType) {
+    request.requestType = requestType;
+    
+    // Nếu chuyển từ 'both' sang 'entry'/'exit', xóa plannedEndDateTime
+    if (requestType !== 'both') {
+      request.plannedEndDateTime = undefined;
+    }
+  }
+
   // Update fields
   if (plannedDateTime) {
     const plannedTime = new Date(plannedDateTime);
@@ -245,8 +287,14 @@ export const updateWorkingHoursRequest = asyncHandler(async (req, res) => {
     request.plannedDateTime = plannedTime;
   }
 
-  if (plannedEndDateTime && request.requestType === 'both') {
-    request.plannedEndDateTime = new Date(plannedEndDateTime);
+  if (plannedEndDateTime && (requestType === 'both' || request.requestType === 'both')) {
+    const endTime = new Date(plannedEndDateTime);
+    const startTime = plannedDateTime ? new Date(plannedDateTime) : request.plannedDateTime;
+    
+    if (endTime <= startTime) {
+      return sendErrorResponse(res, 'Thời gian kết thúc phải lớn hơn thời gian bắt đầu', 400);
+    }
+    request.plannedEndDateTime = endTime;
   }
 
   if (reason) {
