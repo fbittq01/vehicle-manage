@@ -237,8 +237,8 @@ class NotificationService {
       // Gửi thông báo tới tất cả supervisor
       await this.notifySupervisors(notification);
 
-      // Gửi thông báo tới room supervisor với event riêng cho xe lạ
-      this.socketService.io?.to('role_supervisor').emit('unknown_vehicle_access', notification);
+      // // Gửi thông báo tới room supervisor với event riêng cho xe lạ
+      // this.socketService.io?.to('role_supervisor').emit('unknown_vehicle_access', notification);
 
       console.log(`🚨 Unknown vehicle notification sent to supervisors: ${populatedLog.licensePlate} ${populatedLog.action} at ${populatedLog.gateName || populatedLog.gateId}`);
 
@@ -455,13 +455,22 @@ class NotificationService {
    */
   async saveNotificationToDatabase(userId, notification) {
     try {
+      // Validate required fields trước khi tạo
+      if (!notification.type || !notification.title || !notification.message) {
+        throw new Error(`Invalid notification data: missing required fields. Type: ${notification.type}, Title: ${notification.title}, Message: ${notification.message}`);
+      }
+
+      if (!userId) {
+        throw new Error('UserId is required for notification');
+      }
+
       // Tạo document notification mới
       const notificationDoc = new Notification({
         userId,
         type: notification.type,
         title: notification.title,
         message: notification.message,
-        data: notification.data,
+        data: notification.data || {},
         priority: notification.priority || 'normal',
         deliveryStatus: 'sent',
         sentAt: new Date(),
@@ -639,9 +648,8 @@ class NotificationService {
         { 
           isRead: true, 
           readAt: new Date() 
-        }, {
-          upsert: true
         }
+        // Bỏ upsert: true để tránh tạo notification rỗng
       );
 
       return result.modifiedCount;
