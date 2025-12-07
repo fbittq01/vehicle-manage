@@ -237,7 +237,7 @@ class NotificationService {
       // Gửi thông báo tới tất cả supervisor
       await this.notifySupervisors(notification);
 
-      // // Gửi thông báo tới room supervisor với event riêng cho xe lạ
+      // Gửi thông báo tới room supervisor với event riêng cho xe lạ
       // this.socketService.io?.to('role_supervisor').emit('unknown_vehicle_access', notification);
 
       console.log(`🚨 Unknown vehicle notification sent to supervisors: ${populatedLog.licensePlate} ${populatedLog.action} at ${populatedLog.gateName || populatedLog.gateId}`);
