@@ -70,6 +70,5 @@ router.put('/:id/verify', requireSupervisor, validateVerifyAccessLog, activityMi
 router.put('/:id/approve', requireSupervisor, activityMiddleware('UPDATE_ACCESS_LOG', 'access_logs'), approveAccessLog);
 router.put('/:id/reject', requireSupervisor, activityMiddleware('UPDATE_ACCESS_LOG', 'access_logs'), rejectAccessLog);
 router.put('/:id/guest-info', requireSupervisor, activityMiddleware('UPDATE_ACCESS_LOG', 'access_logs'), updateGuestInfo);
-router.put('/:id/correct-info', requireSupervisor, validateUpdateAccessLogInfo, activityMiddleware('UPDATE_ACCESS_LOG', 'access_logs'), updateAccessLogInfo);
 
 export default router;

@@ -500,7 +500,8 @@ class SocketService {
         processedImage,
         originalImage,
         boundingBox,
-        processingTime
+        processingTime,
+        video
       };
 
       // Chuẩn bị dữ liệu cho createAccessLogLogic

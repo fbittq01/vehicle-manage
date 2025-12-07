@@ -649,14 +649,14 @@ export const departmentApiSchema = Joi.object({
     .messages({
       'string.max': 'Mô tả không được vượt quá 500 ký tự'
     }),
-  managerId: Joi.string()
+  manager: Joi.string()
     .pattern(/^[0-9a-fA-F]{24}$/)
     .allow(null, '')
     .optional()
     .messages({
       'string.pattern.base': 'Manager ID không hợp lệ'
     }),
-  parentId: Joi.string()
+  parent: Joi.string()
     .pattern(/^[0-9a-fA-F]{24}$/)
     .allow(null, '')
     .optional()
