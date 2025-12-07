@@ -737,6 +737,13 @@ export const workingHoursRequestSchema = Joi.object({
 });
 
 export const updateWorkingHoursRequestSchema = Joi.object({
+  requestType: Joi.string()
+    .valid('entry', 'exit', 'both')
+    .optional()
+    .messages({
+      'any.only': 'Loại yêu cầu phải là entry, exit hoặc both'
+    }),
+  
   plannedDateTime: Joi.date()
     .greater('now')
     .optional()
@@ -746,9 +753,21 @@ export const updateWorkingHoursRequestSchema = Joi.object({
   
   plannedEndDateTime: Joi.date()
     .greater(Joi.ref('plannedDateTime'))
+    .when('requestType', {
+      is: 'both',
+      then: Joi.optional(),
+      otherwise: Joi.optional()
+    })
     .optional()
     .messages({
       'date.greater': 'Thời gian kết thúc phải lớn hơn thời gian bắt đầu'
+    }),
+  
+  licensePlate: Joi.string()
+    .pattern(/^[0-9]{2}[A-Z]{1,2}-[0-9]{3,4}\.[0-9]{2}$|^[0-9]{2}[A-Z]{1,2}[0-9]{3,4}$/)
+    .optional()
+    .messages({
+      'string.pattern.base': 'Biển số xe không đúng định dạng (VD: 30A-123.45)'
     }),
   
   reason: Joi.string()
