@@ -110,6 +110,11 @@ workingHoursSchema.methods.isLate = function(entryTime) {
     return { isLate: false, reason: 'Không phải ngày làm việc' };
   }
   
+  // Kiểm tra có phải trong thời gian làm việc (từ startTime đến endTime)
+  if (timeStr < this.startTime || timeStr > this.endTime) {
+    return { isLate: false, reason: 'Ngoài giờ làm việc' };
+  }
+  
   // Tính thời gian cho phép muộn
   const [startHour, startMinute] = this.startTime.split(':').map(Number);
   const allowedLateTime = new Date(date);
@@ -138,6 +143,11 @@ workingHoursSchema.methods.isEarly = function(exitTime) {
   
   if (!this.workingDays.includes(dayOfWeek)) {
     return { isEarly: false, reason: 'Không phải ngày làm việc' };
+  }
+  
+  // Kiểm tra có phải trong thời gian làm việc (từ startTime đến endTime)
+  if (timeStr < this.startTime || timeStr > this.endTime) {
+    return { isEarly: false, reason: 'Ngoài giờ làm việc' };
   }
   
   // Tính thời gian cho phép về sớm
