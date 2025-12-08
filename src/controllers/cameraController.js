@@ -373,7 +373,7 @@ export const getStreamableCameras = async (req, res) => {
 
     const cameras = await Camera.find(filter)
       .populate('managedBy', 'name username')
-      .select('name description location technical streaming status managedBy');
+      .select('name description location technical streaming status managedBy cameraId');
 
     return sendSuccessResponse(res, cameras, 'Danh sách cameras streaming');
   } catch (error) {
