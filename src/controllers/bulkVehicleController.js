@@ -162,7 +162,7 @@ export const bulkUploadVehicles = asyncHandler(async (req, res) => {
 
           if (!owner) {
             // Tạo user mới
-            const defaultPassword = 'Admin@123';
+            const defaultPassword = process.env.DEFAULT_USER_PASSWORD || 'Admin@123';
             
             owner = new User({
               username: username,
