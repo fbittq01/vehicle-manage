@@ -10,9 +10,11 @@ class SocketService {
   constructor() {
     this.io = null;
     this.httpServer = null;
-    this.pythonServerSocket = null;
+    this.pythonCameraSocket = null;  // WebSocket cho streaming camera (port 9000)
+    this.pythonDetectionSocket = null;  // WebSocket cho detection biển số (port 8000)
     this.connectedClients = new Map();
-    this.reconnectAttempts = 0;
+    this.cameraReconnectAttempts = 0;
+    this.detectionReconnectAttempts = 0;
     this.maxReconnectAttempts = 10;
     this.reconnectDelay = 5000; // 5 seconds
     this.notificationService = null;
@@ -38,9 +40,10 @@ class SocketService {
     
     // Kiểm tra environment variable để enable/disable Python server
     if (process.env.PYTHON_SERVER_ENABLED === 'true') {
-      this.connectToPythonServer();
+      this.connectToPythonCameraServer();
+      this.connectToPythonDetectionServer();
     } else {
-      console.log('🚫 Python AI server connection disabled by environment variable');
+      console.log('🚫 Python AI servers connection disabled by environment variable');
     }
     
     return this.httpServer;
@@ -199,8 +202,8 @@ class SocketService {
               totalClientsInRoom: this.io.sockets.adapter.rooms.get(`camera_${cameraId}`)?.size || 1
             });
             
-            // Gửi yêu cầu bắt đầu stream tới Python server
-            this.sendToPythonServer({
+            // Gửi yêu cầu bắt đầu stream tới Python camera server
+            this.sendToPythonCameraServer({
               type: 'start_stream',
               data: {
                 cameraId,
@@ -248,8 +251,8 @@ class SocketService {
             });
             
             if (!room || room.size === 0) {
-              // Gửi yêu cầu dừng stream tới Python server
-              this.sendToPythonServer({
+              // Gửi yêu cầu dừng stream tới Python camera server
+              this.sendToPythonCameraServer({
                 type: 'stop_stream',
                 data: { cameraId }
               });
@@ -270,8 +273,8 @@ class SocketService {
       socket.on('camera_control', (data) => {
         const { cameraId, command, value } = data;
         
-        // Gửi command điều khiển tới Python server
-        this.sendToPythonServer({
+        // Gửi command điều khiển tới Python camera server
+        this.sendToPythonCameraServer({
           type: 'camera_control',
           data: { cameraId, command, value, clientId: socket.id }
         });
@@ -314,72 +317,99 @@ class SocketService {
     });
   }
 
-  // Kết nối tới Python AI server
-  connectToPythonServer() {
+  // Kết nối tới Python Camera Server (port 9000)
+  connectToPythonCameraServer() {
     if (process.env.PYTHON_SERVER_ENABLED !== 'true') {
-      console.log('🚫 Python AI server connection is disabled by environment');
-      // Emit fake status for testing
-      setTimeout(() => {
-        this.io.emit('python_server_status', { 
-          connected: false, 
-          disabled: true,
-          message: 'Python AI server connection disabled by configuration'
-        });
-      }, 1000);
+      console.log('🚫 Python Camera server connection is disabled by environment');
       return;
     }
     
-    const pythonServerUrl = process.env.PYTHON_SERVER_URL || 'ws://localhost:8888';
+    const pythonCameraServerUrl = process.env.PYTHON_CAMERA_SERVER_URL || 'ws://localhost:9000/ws';
     
     try {
-      // Sử dụng WebSocket client để kết nối tới Python server
       import('ws').then(({ default: WebSocket }) => {
-        this.pythonServerSocket = new WebSocket(pythonServerUrl);
+        this.pythonCameraSocket = new WebSocket(pythonCameraServerUrl);
         
-        this.pythonServerSocket.on('open', () => {
-          console.log('Connected to Python AI server');
-          this.reconnectAttempts = 0;
+        this.pythonCameraSocket.on('open', () => {
+          console.log('🎥 Connected to Python Camera Streaming server (port 9000)');
+          this.cameraReconnectAttempts = 0;
           
           // Gửi thông báo kết nối thành công tới clients
-          this.io.emit('python_server_status', { connected: true });
+          this.io.emit('python_camera_status', { connected: true });
         });
 
-        this.pythonServerSocket.on('message', (data) => {
-          this.handlePythonServerMessage(data);
+        this.pythonCameraSocket.on('message', (data) => {
+          this.handlePythonCameraMessage(data);
         });
 
-        this.pythonServerSocket.on('close', () => {
-          console.log('Disconnected from Python AI server');
-          this.io.emit('python_server_status', { connected: false });
-          this.attemptReconnectToPython();
+        this.pythonCameraSocket.on('close', () => {
+          console.log('🎥❌ Disconnected from Python Camera server');
+          this.io.emit('python_camera_status', { connected: false });
+          this.attemptReconnectToPythonCamera();
         });
 
-        this.pythonServerSocket.on('error', (error) => {
-          console.error('Python server connection error:', error);
-          this.io.emit('python_server_error', { error: error.message });
+        this.pythonCameraSocket.on('error', (error) => {
+          console.error('Python Camera server connection error:', error);
+          this.io.emit('python_camera_error', { error: error.message });
         });
       });
     } catch (error) {
-      console.error('Failed to import ws module:', error);
+      console.error('Failed to import ws module for camera server:', error);
     }
   }
 
-  // Xử lý tin nhắn từ Python server
-  async handlePythonServerMessage(data) {
-    try {      
-      // Kiểm tra xem data có phải là JSON hợp lệ không
+  // Kết nối tới Python Detection Server (port 8000)
+  connectToPythonDetectionServer() {
+    if (process.env.PYTHON_SERVER_ENABLED !== 'true') {
+      console.log('🚫 Python Detection server connection is disabled by environment');
+      return;
+    }
+    
+    const pythonDetectionServerUrl = process.env.PYTHON_DETECTION_SERVER_URL?.replace('http://', 'ws://').replace('https://', 'wss://') || 'ws://localhost:8000/ws';
+    
+    try {
+      import('ws').then(({ default: WebSocket }) => {
+        this.pythonDetectionSocket = new WebSocket(pythonDetectionServerUrl);
+        
+        this.pythonDetectionSocket.on('open', () => {
+          console.log('🔍 Connected to Python Detection server (port 8000)');
+          this.detectionReconnectAttempts = 0;
+          
+          // Gửi thông báo kết nối thành công tới clients
+          this.io.emit('python_detection_status', { connected: true });
+        });
+
+        this.pythonDetectionSocket.on('message', (data) => {
+          this.handlePythonDetectionMessage(data);
+        });
+
+        this.pythonDetectionSocket.on('close', () => {
+          console.log('🔍❌ Disconnected from Python Detection server');
+          this.io.emit('python_detection_status', { connected: false });
+          this.attemptReconnectToPythonDetection();
+        });
+
+        this.pythonDetectionSocket.on('error', (error) => {
+          console.error('Python Detection server connection error:', error);
+          this.io.emit('python_detection_error', { error: error.message });
+        });
+      });
+    } catch (error) {
+      console.error('Failed to import ws module for detection server:', error);
+    }
+  }
+
+  // Xử lý tin nhắn từ Python Camera Server
+  async handlePythonCameraMessage(data) {
+    try {
       const messageString = data.toString();
       if (!messageString.trim().startsWith('{') && !messageString.trim().startsWith('[')) {
-        console.warn('Received non-JSON message from Python server:', messageString);
+        console.warn('Received non-JSON message from Python Camera server:', messageString);
         return;
       }
       const message = JSON.parse(data.toString());
       
       switch (message.type) {
-        case 'license_plate_detected':
-          await this.handleLicensePlateDetection(message.data);
-          break;
-          
         case 'video_frame':
           this.handleVideoStream(message.data);
           break;
@@ -393,18 +423,49 @@ class SocketService {
           break;
           
         case 'processing_status':
-          this.io.emit('processing_status', message.data);
+          this.io.emit('camera_processing_status', message.data);
           break;
           
         case 'error':
-          this.io.emit('recognition_error', message.data);
+          this.io.emit('camera_error', message.data);
           break;
           
         default:
-          console.log('Unknown message type from Python server:', message.type);
+          console.log('Unknown message type from Python Camera server:', message.type);
       }
     } catch (error) {
-      console.error('Error processing Python server message:', error);
+      console.error('Error processing Python Camera server message:', error);
+    }
+  }
+
+  // Xử lý tin nhắn từ Python Detection Server
+  async handlePythonDetectionMessage(data) {
+    try {
+      const messageString = data.toString();
+      if (!messageString.trim().startsWith('{') && !messageString.trim().startsWith('[')) {
+        console.warn('Received non-JSON message from Python Detection server:', messageString);
+        return;
+      }
+      const message = JSON.parse(data.toString());
+      
+      switch (message.type) {
+        case 'license_plate_detected':
+          await this.handleLicensePlateDetection(message.data);
+          break;
+          
+        case 'processing_status':
+          this.io.emit('detection_processing_status', message.data);
+          break;
+          
+        case 'error':
+          this.io.emit('detection_error', message.data);
+          break;
+          
+        default:
+          console.log('Unknown message type from Python Detection server:', message.type);
+      }
+    } catch (error) {
+      console.error('Error processing Python Detection server message:', error);
     }
   }
 
@@ -447,9 +508,9 @@ class SocketService {
     try {
       const { cameraId, action, settings } = data;
       
-      // Gửi command tới Python server để điều khiển stream
-      if (this.pythonServerSocket && this.pythonServerSocket.readyState === 1) {
-        this.pythonServerSocket.send(JSON.stringify({
+      // Gửi command tới Python Camera server để điều khiển stream
+      if (this.pythonCameraSocket && this.pythonCameraSocket.readyState === 1) {
+        this.pythonCameraSocket.send(JSON.stringify({
           type: 'stream_control',
           data: { cameraId, action, settings }
         }));
@@ -470,6 +531,7 @@ class SocketService {
 
   // Xử lý kết quả nhận diện biển số
   async handleLicensePlateDetection(data) {
+    console.log("🚀 ~ SocketService ~ handleLicensePlateDetection ~ data:", data)
     try {
       const {
         licensePlate,
@@ -488,11 +550,11 @@ class SocketService {
       // Chuẩn hóa biển số
       const normalizedPlate = normalizeLicensePlate(licensePlate);
       
-      if (!validateVietnameseLicensePlate(normalizedPlate)) {
-        console.warn('Invalid license plate format:', normalizedPlate);
-        this.io.emit('invalid_license_plate', { licensePlate, gateId });
-        return;
-      }
+      // if (!validateVietnameseLicensePlate(normalizedPlate)) {
+      //   console.warn('Invalid license plate format:', normalizedPlate);
+      //   this.io.emit('invalid_license_plate', { licensePlate, gateId });
+      //   return;
+      // }
 
       // Chuẩn bị dữ liệu recognition
       const recognitionData = {
@@ -540,18 +602,33 @@ class SocketService {
     }
   }
 
-  // Gửi command tới Python server
-  sendToPythonServer(message) {
+  // Gửi command tới Python Camera Server
+  sendToPythonCameraServer(message) {
     if (process.env.PYTHON_SERVER_ENABLED !== 'true') {
-      console.log('🚫 Python server disabled - Command not sent:', message);
+      console.log('🚫 Python Camera server disabled - Command not sent:', message);
       return false;
     }
     
-    if (this.pythonServerSocket && this.pythonServerSocket.readyState === 1) {
-      this.pythonServerSocket.send(JSON.stringify(message));
+    if (this.pythonCameraSocket && this.pythonCameraSocket.readyState === 1) {
+      this.pythonCameraSocket.send(JSON.stringify(message));
       return true;
     }
-    console.warn('Python server not connected - Command not sent:', message.type);
+    console.warn('Python Camera server not connected - Command not sent:', message.type);
+    return false;
+  }
+
+  // Gửi command tới Python Detection Server
+  sendToPythonDetectionServer(message) {
+    if (process.env.PYTHON_SERVER_ENABLED !== 'true') {
+      console.log('🚫 Python Detection server disabled - Command not sent:', message);
+      return false;
+    }
+    
+    if (this.pythonDetectionSocket && this.pythonDetectionSocket.readyState === 1) {
+      this.pythonDetectionSocket.send(JSON.stringify(message));
+      return true;
+    }
+    console.warn('Python Detection server not connected - Command not sent:', message.type);
     return false;
   }
 
@@ -578,17 +655,31 @@ class SocketService {
     return this.handleLicensePlateDetection(mockData);
   }
 
-  // Thử kết nối lại Python server
-  attemptReconnectToPython() {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
+  // Thử kết nối lại Python Camera server
+  attemptReconnectToPythonCamera() {
+    if (this.cameraReconnectAttempts < this.maxReconnectAttempts) {
+      this.cameraReconnectAttempts++;
       
       setTimeout(() => {
-        console.log(`Attempting to reconnect to Python server (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-        this.connectToPythonServer();
-      }, this.reconnectDelay * this.reconnectAttempts);
+        console.log(`Attempting to reconnect to Python Camera server (${this.cameraReconnectAttempts}/${this.maxReconnectAttempts})`);
+        this.connectToPythonCameraServer();
+      }, this.reconnectDelay * this.cameraReconnectAttempts);
     } else {
-      console.error('Max reconnection attempts reached for Python server');
+      console.error('Max reconnection attempts reached for Python Camera server');
+    }
+  }
+
+  // Thử kết nối lại Python Detection server
+  attemptReconnectToPythonDetection() {
+    if (this.detectionReconnectAttempts < this.maxReconnectAttempts) {
+      this.detectionReconnectAttempts++;
+      
+      setTimeout(() => {
+        console.log(`Attempting to reconnect to Python Detection server (${this.detectionReconnectAttempts}/${this.maxReconnectAttempts})`);
+        this.connectToPythonDetectionServer();
+      }, this.reconnectDelay * this.detectionReconnectAttempts);
+    } else {
+      console.error('Max reconnection attempts reached for Python Detection server');
     }
   }
 
@@ -907,8 +998,11 @@ class SocketService {
 
   // Đóng connections
   close() {
-    if (this.pythonServerSocket) {
-      this.pythonServerSocket.close();
+    if (this.pythonCameraSocket) {
+      this.pythonCameraSocket.close();
+    }
+    if (this.pythonDetectionSocket) {
+      this.pythonDetectionSocket.close();
     }
     if (this.io) {
       this.io.close();
