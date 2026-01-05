@@ -373,9 +373,22 @@ export const getStreamableCameras = async (req, res) => {
 
     const cameras = await Camera.find(filter)
       .populate('managedBy', 'name username')
-      .select('name description location technical streaming status managedBy cameraId');
+      .lean();
 
-    return sendSuccessResponse(res, cameras, 'Danh sách cameras streaming');
+    // Chỉ trả về các fields cần thiết và đảm bảo password được bao gồm
+    const streamableCameras = cameras.map(camera => ({
+      _id: camera._id,
+      cameraId: camera.cameraId,
+      name: camera.name,
+      description: camera.description,
+      location: camera.location,
+      technical: camera.technical,
+      streaming: camera.streaming,
+      status: camera.status,
+      managedBy: camera.managedBy
+    }));
+
+    return sendSuccessResponse(res, streamableCameras, 'Danh sách cameras streaming');
   } catch (error) {
     console.error('Error getting streamable cameras:', error);
     return sendErrorResponse(res, 'Lỗi server khi lấy danh sách cameras', 500);
