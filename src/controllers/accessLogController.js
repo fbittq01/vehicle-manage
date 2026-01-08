@@ -3,7 +3,7 @@ import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '.
 import { getPaginationParams, createPagination, getStartOfDay, getEndOfDay } from '../utils/response.js';
 import { normalizeLicensePlate } from '../utils/licensePlate.js';
 import { asyncHandler } from '../middleware/logger.js';
-import { processRecognitionImages } from '../utils/fileStorage.js';
+import { processRecognitionData } from '../utils/fileStorage.js';
 import { checkAndApplyRequest } from './workingHoursRequestController.js';
 import { createDepartmentFilter, checkResourceAccess } from '../utils/departmentFilter.js';
 
@@ -137,8 +137,8 @@ export const createAccessLogLogic = async (logData) => {
   // Chuẩn hóa biển số
   const normalizedPlate = normalizeLicensePlate(licensePlate);
 
-  // Xử lý ảnh base64 trong recognitionData (nếu có)
-  const processedRecognitionData = await processRecognitionImages(
+  // Xử lý ảnh và video base64 trong recognitionData (nếu có)
+  const processedRecognitionData = await processRecognitionData(
     recognitionData, 
     normalizedPlate, 
     action

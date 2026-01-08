@@ -75,33 +75,102 @@ export const isBase64Image = (str) => {
 };
 
 /**
- * Xóa file ảnh từ local storage
- * @param {string} imageUrl - URL của ảnh cần xóa (ví dụ: /uploads/access-logs/image_123456.jpg)
- * @returns {Promise<boolean>} - True nếu xóa thành công
+ * Kiểm tra xem string có phải là base64 video không
+ * @param {string} str - String cần kiểm tra
+ * @returns {boolean} - True nếu là base64 video
  */
-export const deleteImage = async (imageUrl) => {
+export const isBase64Video = (str) => {
+  if (!str || typeof str !== 'string') return false;
+  
+  // Kiểm tra prefix data:video/
+  if (str.startsWith('data:video/')) {
+    return true;
+  }
+  
+  // Kiểm tra base64 thuần (không có prefix)
+  // Base64 video thường rất dài (>1000 ký tự) và chỉ chứa A-Z, a-z, 0-9, +, /, =
+  if (str.length > 1000 && /^[A-Za-z0-9+/=]+$/.test(str)) {
+    return true;
+  }
+  
+  return false;
+};
+
+/**
+ * Lưu video base64 vào local storage
+ * @param {string} base64Data - Dữ liệu video dạng base64 (có thể có prefix data:video/...)
+ * @param {string} folder - Thư mục con để lưu (ví dụ: 'access-logs/videos')
+ * @param {string} filename - Tên file (không có extension)
+ * @returns {Promise<string>} - Đường dẫn URL của file đã lưu
+ */
+export const saveBase64Video = async (base64Data, folder, filename) => {
   try {
-    if (!imageUrl || !imageUrl.startsWith('/uploads/')) {
-      return false;
+    // Kiểm tra và xử lý base64 data
+    let videoData = base64Data;
+    let fileExtension = 'mp4'; // Default extension
+
+    // Nếu có prefix data:video/..., extract data và extension
+    if (base64Data.startsWith('data:video/')) {
+      const matches = base64Data.match(/^data:video\/([a-zA-Z0-9]+);base64,(.+)$/);
+      if (matches) {
+        fileExtension = matches[1];
+        videoData = matches[2];
+      }
     }
 
-    const filePath = path.join(__dirname, '../..', imageUrl);
-    await fs.unlink(filePath);
-    return true;
+    // Tạo buffer từ base64
+    const buffer = Buffer.from(videoData, 'base64');
+
+    // Tạo đường dẫn thư mục
+    const folderPath = path.join(UPLOADS_BASE_PATH, folder);
+    await fs.mkdir(folderPath, { recursive: true });
+
+    // Tạo tên file cuối cùng (filename đã có timestamp và random suffix)
+    const finalFilename = `${filename}.${fileExtension}`;
+    const filePath = path.join(folderPath, finalFilename);
+
+    // Lưu file
+    await fs.writeFile(filePath, buffer);
+
+    // Trả về URL relative từ uploads folder
+    return `/uploads/${folder}/${finalFilename}`;
   } catch (error) {
-    console.error('Lỗi khi xóa ảnh:', error);
-    return false;
+    console.error('Lỗi khi lưu video base64:', error);
+    throw new Error('Không thể lưu video vào storage');
   }
 };
 
 /**
- * Xử lý recognition data để lưu ảnh base64 và trả về URLs
+ * Xóa file media từ local storage (ảnh hoặc video)
+ * @param {string} mediaUrl - URL của file cần xóa (ví dụ: /uploads/access-logs/image_123456.jpg)
+ * @returns {Promise<boolean>} - True nếu xóa thành công
+ */
+export const deleteMedia = async (mediaUrl) => {
+  try {
+    if (!mediaUrl || !mediaUrl.startsWith('/uploads/')) {
+      return false;
+    }
+
+    const filePath = path.join(__dirname, '../..', mediaUrl);
+    await fs.unlink(filePath);
+    return true;
+  } catch (error) {
+    console.error('Lỗi khi xóa file media:', error);
+    return false;
+  }
+};
+
+// Alias để backward compatibility
+export const deleteImage = deleteMedia;
+
+/**
+ * Xử lý recognition data để lưu ảnh và video base64 và trả về URLs
  * @param {object} recognitionData - Dữ liệu recognition từ request
  * @param {string} licensePlate - Biển số xe để đặt tên file
  * @param {string} action - Action (entry/exit) để đặt tên file
  * @returns {Promise<object>} - Recognition data đã được xử lý với URLs
  */
-export const processRecognitionImages = async (recognitionData, licensePlate, action) => {
+export const processRecognitionData = async (recognitionData, licensePlate, action) => {
   if (!recognitionData) return recognitionData;
 
   const processedData = { ...recognitionData };
@@ -115,7 +184,7 @@ export const processRecognitionImages = async (recognitionData, licensePlate, ac
       const filename = `${safeFileName}_${action}_processed_${timestamp}_${randomSuffix}`;
       processedData.processedImage = await saveBase64Image(
         recognitionData.processedImage,
-        'access-logs',
+        'access-logs/images',
         filename
       );
     }
@@ -125,15 +194,38 @@ export const processRecognitionImages = async (recognitionData, licensePlate, ac
       const filename = `${safeFileName}_${action}_original_${timestamp}_${randomSuffix}`;
       processedData.originalImage = await saveBase64Image(
         recognitionData.originalImage,
-        'access-logs',
+        'access-logs/images',
         filename
       );
     }
 
+    // Xử lý video
+    if (recognitionData.video && isBase64Video(recognitionData.video)) {
+      const filename = `${safeFileName}_${action}_video_${timestamp}_${randomSuffix}`;
+      processedData.videoUrl = await saveBase64Video(
+        recognitionData.video,
+        'access-logs/videos',
+        filename
+      );
+      
+      // Xóa dữ liệu base64 video khỏi object để tiết kiệm bộ nhớ
+      delete processedData.video;
+    } else if (recognitionData.videoUrl) {
+      // Nếu đã có videoUrl thì giữ nguyên
+      processedData.videoUrl = recognitionData.videoUrl;
+    }
+
     return processedData;
   } catch (error) {
-    console.error('Lỗi khi xử lý ảnh recognition:', error);
-    // Trả về data gốc nếu có lỗi
-    return recognitionData;
+    console.error('Lỗi khi xử lý recognition data:', error);
+    // Trả về data gốc nếu có lỗi (nhưng xóa video base64 để tránh memory leak)
+    const fallbackData = { ...recognitionData };
+    if (fallbackData.video) {
+      delete fallbackData.video;
+    }
+    return fallbackData;
   }
 };
+
+// Alias để backward compatibility  
+export const processRecognitionImages = processRecognitionData;;

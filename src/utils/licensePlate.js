@@ -37,6 +37,15 @@ export const normalizeLicensePlate = (licensePlate) => {
       return `${match[1]}-${match[2]}.${match[3]}`;
     }
   }
+  
+  // Biển số quân đội: HC3257 -> HC-3257 (2 chữ + 4 số)
+  if (/^[A-Z]{2}[0-9]{4}$/.test(cleanLicensePlate)) {
+    const match = cleanLicensePlate.match(/^([A-Z]{2})([0-9]{4})$/);
+    if (match) {
+      return `${match[1]}-${match[2]}`;
+    }
+  }
+  
   // Nếu không khớp pattern nào thì trả về bản gốc đã làm sạch
   return normalized;
 };
@@ -64,6 +73,10 @@ export const validateVietnameseLicensePlate = (licensePlate) => {
     /^[0-9]{2}[A-Z]{1}-[0-9]{5}$/,
     // Format có dấu gạch ngang: 29A-123.45
     /^[0-9]{2}[A-Z]{1,2}-[0-9]{3,5}(\.[0-9]{2})?$/,
+    // Biển số quân đội: HC-3257, QD-1234, CA-5678 (2 chữ cái + 4 số)
+    /^[A-Z]{2}-[0-9]{4}$/,
+    // Biển số quân đội không có gạch ngang: HC3257, QD1234 (2 chữ cái + 4 số)
+    /^[A-Z]{2}[0-9]{4}$/,
   ];
   
   return patterns.some(pattern => pattern.test(normalized));
@@ -77,7 +90,38 @@ export const parseLicensePlate = (licensePlate) => {
     return null;
   }
   
-  // Trích xuất mã tỉnh thành
+  // Kiểm tra nếu là biển số quân đội (2 chữ cái + 4 số)
+  if (/^[A-Z]{2}[-]?[0-9]{4}$/.test(normalized)) {
+    const militaryCode = normalized.substring(0, 2);
+    
+    // Map mã biển số quân đội
+    const militaryMap = {
+      'QD': 'Quân đội',
+      'HC': 'Hậu cần quân đội',
+      'TQ': 'Tổng cục Kỹ thuật',
+      'TC': 'Tổng cục Chính trị',
+      'BT': 'Ban Tổng tham mưu',
+      'BK': 'Bộ Quốc phòng',
+      'CA': 'Công an',
+      'CS': 'Cảnh sát',
+      'PC': 'Phòng cháy chữa cháy',
+      'GT': 'Giao thông',
+      'BD': 'Bộ đội biên phòng',
+      'HQ': 'Hải quan',
+      'NG': 'Ngoại giao',
+      'QT': 'Quốc tế'
+    };
+    
+    return {
+      normalized,
+      militaryCode,
+      organizationName: militaryMap[militaryCode] || 'Cơ quan nhà nước',
+      type: 'military',
+      isValid: true
+    };
+  }
+  
+  // Trích xuất mã tỉnh thành cho biển số dân sự
   const provinceCode = normalized.substring(0, 2);
   
   // Map mã tỉnh thành
@@ -108,6 +152,7 @@ export const parseLicensePlate = (licensePlate) => {
     normalized,
     provinceCode,
     provinceName: provinceMap[provinceCode] || 'Không xác định',
+    type: 'civilian',
     isValid: true
   };
 };
@@ -142,6 +187,14 @@ export const formatLicensePlateDisplay = (licensePlate) => {
   // Xe máy 4 số: 29A1234 -> 29A-1234
   if (/^[0-9]{2}[A-Z]{1}[0-9]{4}$/.test(normalized)) {
     const match = normalized.match(/^([0-9]{2}[A-Z]{1})([0-9]{4})$/);
+    if (match) {
+      return `${match[1]}-${match[2]}`;
+    }
+  }
+  
+  // Biển số quân đội: HC3257 -> HC-3257 (2 chữ + 4 số)
+  if (/^[A-Z]{2}[0-9]{4}$/.test(normalized)) {
+    const match = normalized.match(/^([A-Z]{2})([0-9]{4})$/);
     if (match) {
       return `${match[1]}-${match[2]}`;
     }

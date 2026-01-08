@@ -443,7 +443,7 @@ class SocketService {
     try {
       const messageString = data.toString();
       if (!messageString.trim().startsWith('{') && !messageString.trim().startsWith('[')) {
-        console.warn('Received non-JSON message from Python Detection server:', messageString);
+        // console.warn('Received non-JSON message from Python Detection server:', messageString);
         return;
       }
       const message = JSON.parse(data.toString());
