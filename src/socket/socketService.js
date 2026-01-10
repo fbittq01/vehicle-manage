@@ -4,7 +4,7 @@ import { AccessLog, Vehicle, User } from '../models/index.js';
 import { normalizeLicensePlate, validateVietnameseLicensePlate } from '../utils/licensePlate.js';
 import { processRecognitionImages } from '../utils/fileStorage.js';
 import { createAccessLogLogic } from '../controllers/accessLogController.js';
-import NotificationService from '../services/notificationService.js';
+import { NotificationManager } from '../services/notifications/index.js';
 
 class SocketService {
   constructor() {
@@ -17,11 +17,11 @@ class SocketService {
     this.detectionReconnectAttempts = 0;
     this.maxReconnectAttempts = 10;
     this.reconnectDelay = 5000; // 5 seconds
-    this.notificationService = null;
+    this.notificationManager = null; // New notification system
   }
 
   // Khởi tạo Socket.IO server
-  initialize(app) {
+  async initialize(app) {
     this.httpServer = createServer(app);
     this.io = new Server(this.httpServer, {
       cors: {
@@ -32,11 +32,15 @@ class SocketService {
       transports: ['websocket', 'polling']
     });
 
-    // Khởi tạo notification service
-    this.notificationService = new NotificationService(this);
+    // Khởi tạo notification manager
+    this.notificationManager = new NotificationManager(this);
+    await this.notificationManager.initialize();
 
     this.setupSocketHandlers();
-    this.startPeriodicLogging();
+    // Chỉ bật periodic logging khi cần debug
+    if (process.env.SOCKET_DEBUG === 'true') {
+      this.startPeriodicLogging();
+    }
     
     // Kiểm tra environment variable để enable/disable Python server
     if (process.env.PYTHON_SERVER_ENABLED === 'true') {
@@ -60,21 +64,18 @@ class SocketService {
         origin: socket.handshake.headers.origin
       };
       
-      console.log(`🔌 [${timestamp}] Client connected:`, clientInfo);
-      console.log(`📊 Total connected clients: ${this.io.sockets.sockets.size}`);
+      // Log minimal khi client connect
+      if (process.env.SOCKET_DEBUG === 'true') {
+        console.log(`🔌 Client connected: ${socket.id}`);
+      }
       
       // Xác thực client và subscribe notifications
       socket.on('authenticate', async (data) => {
         try {
           const { userId, role, departmentId, token } = data;
           
-          // Debug logging để kiểm tra dữ liệu từ frontend
-          console.log(`🔍 [${timestamp}] Authentication request received:`, {
-            socketId: socket.id,
-            receivedData: { userId, role, departmentId, hasToken: !!token },
-            clientIP: socket.handshake.address,
-            userAgent: socket.handshake.headers['user-agent']?.substring(0, 100)
-          });
+          // Debug logging (chỉ bật khi cần)
+          // console.log(`🔍 Authentication: ${userId} (${role})`);
           
           // TODO: Có thể thêm logic xác thực JWT token ở đây
           // const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -99,14 +100,10 @@ class SocketService {
             socket.join(`department_${departmentId}`);
           }
           
-          console.log(`🔐 [${timestamp}] User authenticated successfully:`, {
-            socketId: socket.id,
-            userId,
-            role,
-            departmentId,
-            rooms: Array.from(socket.rooms),
-            storedClientInfo: this.connectedClients.get(socket.id)
-          });
+          // Log minimal
+          if (process.env.SOCKET_DEBUG === 'true') {
+            console.log(`🔐 Authenticated: ${userId} (${role})`);
+          }
           
           socket.emit('authenticated', { 
             success: true,
@@ -137,7 +134,7 @@ class SocketService {
           }
           
           // Cập nhật trạng thái delivered cho các notifications chưa delivered
-          if (this.notificationService) {
+          if (this.notificationManager) {
             try {
               await this.updateNotificationDeliveryStatus(clientInfo.userId, socket.handshake.address);
             } catch (error) {
@@ -145,12 +142,10 @@ class SocketService {
             }
           }
           
-          console.log(`🔔 [${timestamp}] Notification subscription:`, {
-            socketId: socket.id,
-            userId: clientInfo.userId,
-            types,
-            rooms: Array.from(socket.rooms)
-          });
+          // Log minimal
+          if (process.env.SOCKET_DEBUG === 'true') {
+            console.log(`🔔 Subscribed: ${clientInfo.userId} -> ${types?.join(', ')}`);
+          }
           
           socket.emit('notifications_subscribed', { types });
         } catch (error) {
@@ -301,15 +296,12 @@ class SocketService {
 
       // Xử lý disconnect
       socket.on('disconnect', (reason) => {
-        const timestamp = new Date().toISOString();
         const clientInfo = this.connectedClients.get(socket.id);
         
-        console.log(`🔌❌ [${timestamp}] Client disconnected:`, {
-          socketId: socket.id,
-          userId: clientInfo?.userId,
-          reason,
-          totalClients: this.io.sockets.sockets.size
-        });
+        // Log minimal khi disconnect
+        if (process.env.SOCKET_DEBUG === 'true') {
+          console.log(`🔌❌ Disconnected: ${clientInfo?.userId || socket.id}`);
+        }
         
         // Cleanup client info
         this.connectedClients.delete(socket.id);
@@ -698,45 +690,63 @@ class SocketService {
     return Array.from(this.connectedClients.values());
   }
 
-  // Getter cho notification service
-  getNotificationService() {
-    return this.notificationService;
+  // Getter cho notification manager
+  getNotificationManager() {
+    return this.notificationManager;
   }
 
-  // Public methods để gửi thông báo
+  // Getter cho notification service (backward compatibility)
+  getNotificationService() {
+    return this.notificationManager;
+  }
+
+  // Public methods để gửi thông báo - Sử dụng NotificationManager
   async notifyWorkingHoursRequest(workingHoursRequest) {
-    if (this.notificationService) {
-      await this.notificationService.notifyWorkingHoursRequest(workingHoursRequest);
+    if (this.notificationManager) {
+      await this.notificationManager.notifyWorkingHoursRequest(workingHoursRequest);
     }
   }
 
-  async notifyUnknownVehicle(accessLog) {
-    if (this.notificationService) {
-      await this.notificationService.notifyUnknownVehicle(accessLog);
+  async notifyVehicleVerification(accessLog, reason = 'manual_review') {
+    if (this.notificationManager) {
+      await this.notificationManager.notifyVehicleVerification(accessLog, reason);
     }
   }
 
   async notifyVehicleAccess(accessLog) {
-    if (this.notificationService) {
-      await this.notificationService.notifyVehicleAccess(accessLog);
-    }
-  }
-
-  async notifyAccessLogVerification(accessLog) {
-    if (this.notificationService) {
-      await this.notificationService.notifyAccessLogVerification(accessLog);
+    if (this.notificationManager) {
+      await this.notificationManager.notifyVehicleAccess(accessLog);
     }
   }
 
   async notifyWorkingHoursRequestUpdate(workingHoursRequest, previousStatus) {
-    if (this.notificationService) {
-      await this.notificationService.notifyWorkingHoursRequestUpdate(workingHoursRequest, previousStatus);
+    if (this.notificationManager) {
+      await this.notificationManager.notifyWorkingHoursRequestUpdate(workingHoursRequest, previousStatus);
+    }
+  }
+
+  async notifyVehicleVerified(accessLog) {
+    if (this.notificationManager) {
+      await this.notificationManager.notifyVehicleVerified(accessLog);
+    }
+  }
+
+  // Backward compatibility methods
+  async notifyUnknownVehicle(accessLog) {
+    if (this.notificationManager) {
+      await this.notificationManager.notifyVehicleVerification(accessLog, 'unknown_vehicle');
+    }
+  }
+
+  async notifyAccessLogVerification(accessLog) {
+    if (this.notificationManager) {
+      await this.notificationManager.notifyVehicleVerification(accessLog, 'manual_review');
     }
   }
 
   async notifyAccessLogVerified(accessLog) {
-    if (this.notificationService) {
-      await this.notificationService.notifyAccessLogVerified(accessLog);
+    if (this.notificationManager) {
+      await this.notificationManager.notifyVehicleVerified(accessLog);
     }
   }
 
@@ -783,11 +793,23 @@ class SocketService {
   // Cleanup expired notifications (có thể gọi định kỳ)
   async cleanupExpiredNotifications() {
     try {
-      if (this.notificationService) {
-        await this.notificationService.cleanupOldNotifications();
-      }
+      // Sử dụng direct database cleanup thay vì notificationService
+      const { Notification } = await import('../models/index.js');
+      const result = await Notification.deleteMany({
+        $or: [
+          { expiresAt: { $exists: true, $lt: new Date() } },
+          { 
+            isRead: true, 
+            readAt: { $lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // 30 days ago
+          }
+        ]
+      });
+      
+      console.log(`🧹 Cleaned up ${result.deletedCount} expired notifications`);
+      return result.deletedCount;
     } catch (error) {
       console.error('Error cleaning up notifications:', error);
+      return 0;
     }
   }
 
@@ -905,7 +927,15 @@ class SocketService {
   getNotificationTypeDescription(type) {
     const descriptions = {
       'working_hours_request': 'Yêu cầu đăng ký giờ làm việc',
+      'working_hours_request_update': 'Cập nhật yêu cầu giờ làm việc',
+      'vehicle_verification': 'Xe cần xác minh',
+      'vehicle_verified': 'Xe đã được xác minh',
+      'vehicle_access': 'Xe ra/vào',
       'access_log_verification': 'Xác thực log ra vào',
+      'access_log_verified': 'Log ra vào đã xác thực',
+      'unknown_vehicle_access': 'Xe lạ ra/vào',
+      'system_maintenance': 'Bảo trì hệ thống',
+      'emergency_alert': 'Cảnh báo khẩn cấp',
       'system_alert': 'Cảnh báo hệ thống',
       'vehicle_detection': 'Phát hiện phương tiện',
       'manual_verification': 'Xác thực thủ công',

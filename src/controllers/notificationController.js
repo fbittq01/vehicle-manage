@@ -46,12 +46,12 @@ export const getNotifications = asyncHandler(async (req, res) => {
 export const getUnreadNotifications = asyncHandler(async (req, res) => {
   const { limit = 20 } = req.query;
 
-  const notificationService = socketServiceInstance?.getNotificationService();
-  if (!notificationService) {
+  const notificationManager = socketServiceInstance?.getNotificationManager();
+  if (!notificationManager) {
     return sendErrorResponse(res, 'Notification service not available', 500);
   }
 
-  const notifications = await notificationService.getUnreadNotifications(req.user._id, parseInt(limit));
+  const notifications = await notificationManager.getUnreadNotifications(req.user._id, parseInt(limit));
 
   sendSuccessResponse(res, { 
     notifications,
@@ -61,12 +61,12 @@ export const getUnreadNotifications = asyncHandler(async (req, res) => {
 
 // Đếm số thông báo chưa đọc
 export const getUnreadCount = asyncHandler(async (req, res) => {
-  const notificationService = socketServiceInstance?.getNotificationService();
-  if (!notificationService) {
+  const notificationManager = socketServiceInstance?.getNotificationManager();
+  if (!notificationManager) {
     return sendErrorResponse(res, 'Notification service not available', 500);
   }
 
-  const count = await notificationService.getUnreadCount(req.user._id);
+  const count = await notificationManager.getUnreadCount(req.user._id);
 
   sendSuccessResponse(res, { count }, 'Lấy số lượng thông báo chưa đọc thành công');
 });
@@ -96,13 +96,13 @@ export const getNotificationById = asyncHandler(async (req, res) => {
 export const markAsRead = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const notificationService = socketServiceInstance?.getNotificationService();
-  if (!notificationService) {
+  const notificationManager = socketServiceInstance?.getNotificationManager();
+  if (!notificationManager) {
     return sendErrorResponse(res, 'Notification service not available', 500);
   }
 
   try {
-    const notification = await notificationService.markAsRead(id, req.user._id);
+    const notification = await notificationManager.markAsRead(id, req.user._id);
     
     // Gửi cập nhật realtime tới client
     socketServiceInstance.io?.to(`user_${req.user._id}`).emit('notification_read', {
@@ -121,12 +121,12 @@ export const markAsRead = asyncHandler(async (req, res) => {
 
 // Đánh dấu tất cả thông báo đã đọc
 export const markAllAsRead = asyncHandler(async (req, res) => {
-  const notificationService = socketServiceInstance?.getNotificationService();
-  if (!notificationService) {
+  const notificationManager = socketServiceInstance?.getNotificationManager();
+  if (!notificationManager) {
     return sendErrorResponse(res, 'Notification service not available', 500);
   }
 
-  const modifiedCount = await notificationService.markAllAsRead(req.user._id);
+  const modifiedCount = await notificationManager.markAllAsRead(req.user._id);
   
   // Gửi cập nhật realtime tới client
   socketServiceInstance.io?.to(`user_${req.user._id}`).emit('all_notifications_read', {
