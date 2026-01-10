@@ -40,7 +40,7 @@ export const initializeDatabase = async () => {
     console.log('Initializing database...');
     
     // Tạo super admin
-    // await createSuperAdmin();
+    await createSuperAdmin();
     
     // Khởi tạo dữ liệu camera mẫu
     // await initCameras();

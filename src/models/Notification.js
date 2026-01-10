@@ -18,6 +18,8 @@ const notificationSchema = new mongoose.Schema({
         'working_hours_request_update', 
         'access_log_verification',
         'access_log_verified',
+        'vehicle_verification',      // Thêm mới - thay thế access_log_verification
+        'vehicle_verified',          // Thêm mới - thay thế access_log_verified
         'system_maintenance',
         'emergency_alert',
         'vehicle_access',

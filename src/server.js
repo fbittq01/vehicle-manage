@@ -95,8 +95,8 @@ const startServer = async () => {
     // Initialize database (tạo super admin, etc.)
     await initializeDatabase();
     
-    // Khởi tạo Socket.IO với HTTP server
-    const httpServer = socketService.initialize(app);
+    // Khởi tạo Socket.IO với HTTP server (async)
+    const httpServer = await socketService.initialize(app);
     
     // Inject socketService vào các controllers
     setWorkingHoursSocketService(socketService);

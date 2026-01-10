@@ -26,7 +26,10 @@ router.get('/unread', activityMiddleware('VIEW_NOTIFICATION', 'notifications'), 
 // Đếm số thông báo chưa đọc
 router.get('/unread/count', activityMiddleware('VIEW_NOTIFICATION', 'notifications'), getUnreadCount);
 
-// Lấy chi tiết một thông báo
+// Alias cho unread-count (hỗ trợ frontend gọi /unread-count)
+router.get('/unread-count', activityMiddleware('VIEW_NOTIFICATION', 'notifications'), getUnreadCount);
+
+// Lấy chi tiết một thông báo (phải đặt SAU các routes cụ thể)
 router.get('/:id', activityMiddleware('VIEW_NOTIFICATION', 'notifications'), getNotificationById);
 
 // Đánh dấu thông báo đã đọc
