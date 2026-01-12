@@ -17,6 +17,9 @@ import {
   getCameraStatistics,
   incrementDetection,
   
+  // Recognition
+  getRecognitionEnabledCameras,
+  
   // Video streaming operations
   getStreamableCameras,
   startCameraStream,
@@ -54,6 +57,13 @@ router.get('/statistics', activityMiddleware('VIEW_ANALYTICS', 'cameras'), getCa
 
 // GET /api/cameras/maintenance - Get cameras needing maintenance
 router.get('/maintenance', activityMiddleware('VIEW_CAMERA', 'cameras'), getCamerasNeedingMaintenance);
+
+// ============================================================================
+// RECOGNITION ROUTES
+// ============================================================================
+
+// GET /api/cameras/recognition - Get cameras enabled for recognition
+router.get('/recognition', activityMiddleware('VIEW_CAMERA', 'cameras'), getRecognitionEnabledCameras);
 
 // ============================================================================
 // VIDEO STREAMING ROUTES

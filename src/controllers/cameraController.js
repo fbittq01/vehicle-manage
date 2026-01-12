@@ -352,6 +352,59 @@ export const incrementDetection = async (req, res) => {
   }
 };
 
+// ============= RECOGNITION FUNCTIONS =============
+
+// Lấy danh sách camera cho phép nhận diện
+export const getRecognitionEnabledCameras = async (req, res) => {
+  try {
+    // Tạo department filter
+    const departmentFilter = await createDepartmentFilter(req.user, {
+      ownerField: 'managedBy',
+      allowSelfOnly: false
+    });
+
+    const filter = {
+      'status.isActive': true,
+      'recognition.enabled': true,
+      ...departmentFilter
+    };
+
+    const cameras = await Camera.find(filter)
+      .populate('managedBy', 'name username')
+      .select('cameraId name description location technical streaming status recognition managedBy')
+      .lean();
+
+    // Format dữ liệu trả về
+    const recognitionCameras = cameras.map(camera => ({
+      _id: camera._id,
+      cameraId: camera.cameraId,
+      name: camera.name,
+      description: camera.description,
+      location: camera.location,
+      technical: {
+        ipAddress: camera.technical?.ipAddress,
+        port: camera.technical?.port,
+        protocol: camera.technical?.protocol,
+        streamUrl: camera.technical?.streamUrl,
+        resolution: camera.technical?.resolution,
+        fps: camera.technical?.fps
+      },
+      streaming: camera.streaming,
+      status: camera.status,
+      recognition: camera.recognition,
+      managedBy: camera.managedBy
+    }));
+
+    return sendSuccessResponse(res, recognitionCameras, 'Danh sách camera cho phép nhận diện');
+  } catch (error) {
+    if (error.message === 'USER_NO_DEPARTMENT') {
+      return sendErrorResponse(res, 'Bạn chưa được phân công vào phòng ban nào', 403);
+    }
+    console.error('Error getting recognition enabled cameras:', error);
+    return sendErrorResponse(res, 'Lỗi server khi lấy danh sách cameras', 500);
+  }
+};
+
 // ============= VIDEO STREAMING FUNCTIONS =============
 
 // Lấy danh sách cameras có thể stream
