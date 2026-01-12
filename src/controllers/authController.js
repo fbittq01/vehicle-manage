@@ -69,8 +69,10 @@ export const register = asyncHandler(async (req, res) => {
 export const login = asyncHandler(async (req, res) => {
   const { username, password } = req.body;
 
-  // Tìm user và include password để so sánh
-  const user = await User.findOne({ username }).select('+password');
+  // Tìm user và include password để so sánh, populate department
+  const user = await User.findOne({ username })
+    .select('+password')
+    .populate('department', 'name _id code manager');
   
   if (!user || !(await user.comparePassword(password))) {
     // Log failed login attempt
