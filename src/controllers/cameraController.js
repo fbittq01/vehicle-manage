@@ -375,25 +375,44 @@ export const getRecognitionEnabledCameras = async (req, res) => {
       .lean();
 
     // Format dữ liệu trả về
-    const recognitionCameras = cameras.map(camera => ({
-      _id: camera._id,
-      cameraId: camera.cameraId,
-      name: camera.name,
-      description: camera.description,
-      location: camera.location,
-      technical: {
-        ipAddress: camera.technical?.ipAddress,
-        port: camera.technical?.port,
-        protocol: camera.technical?.protocol,
-        streamUrl: camera.technical?.streamUrl,
-        resolution: camera.technical?.resolution,
-        fps: camera.technical?.fps
-      },
-      streaming: camera.streaming,
-      status: camera.status,
-      recognition: camera.recognition,
-      managedBy: camera.managedBy
-    }));
+    const recognitionCameras = cameras.map(camera => {
+      // Chuyển đổi ROI từ {x, y, width, height} sang [x1, y1, x2, y2]
+      let roiArray = null;
+      if (camera.recognition?.roi) {
+        const roi = camera.recognition.roi;
+        if (roi.x !== undefined && roi.y !== undefined && roi.width !== undefined && roi.height !== undefined) {
+          roiArray = [
+            roi.x,              // x1
+            roi.y,              // y1
+            roi.x + roi.width,  // x2
+            roi.y + roi.height  // y2
+          ];
+        }
+      }
+
+      return {
+        _id: camera._id,
+        cameraId: camera.cameraId,
+        name: camera.name,
+        description: camera.description,
+        location: camera.location,
+        technical: {
+          ipAddress: camera.technical?.ipAddress,
+          port: camera.technical?.port,
+          protocol: camera.technical?.protocol,
+          streamUrl: camera.technical?.streamUrl,
+          resolution: camera.technical?.resolution,
+          fps: camera.technical?.fps
+        },
+        streaming: camera.streaming,
+        status: camera.status,
+        recognition: {
+          ...camera.recognition,
+          roi: roiArray
+        },
+        managedBy: camera.managedBy
+      };
+    });
 
     return sendSuccessResponse(res, recognitionCameras, 'Danh sách camera cho phép nhận diện');
   } catch (error) {
