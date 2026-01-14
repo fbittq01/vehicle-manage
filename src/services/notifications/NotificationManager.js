@@ -38,11 +38,9 @@ export class NotificationManager {
         throw new Error(`Unknown notification type: ${notificationType}`);
       }
 
-      // Log minimal (chỉ bật debug nếu cần)
-      // console.log(`📤 Sending: ${notificationType}`);
-
       // Populate data nếu cần
       const populatedData = await this.populateData(data, config);
+      console.log("🚀 ~ NotificationManager ~ send ~ populatedData:", populatedData)
 
       // Tạo context cho audience resolution
       const context = await this.buildContext(populatedData, config, options);
@@ -169,7 +167,8 @@ export class NotificationManager {
 
   /**
    * Gửi notification qua các channels
-   * @param {Array} channels - Danh sách channels
+   * Database LUÔN được lưu (persistence), channels chỉ quyết định cách GIAO (delivery)
+   * @param {Array} channels - Danh sách delivery channels
    * @param {Array} recipients - Recipients
    * @param {Object} notification - Notification object
    * @param {Array} rooms - Socket rooms
@@ -177,6 +176,14 @@ export class NotificationManager {
   async sendToChannels(channels, recipients, notification, rooms) {
     const sendPromises = [];
 
+    // LUÔN lưu vào database trước (persistence layer)
+    if (this.databaseChannel.isAvailable()) {
+      sendPromises.push(
+        this.databaseChannel.bulkSave(recipients, notification)
+      );
+    }
+
+    // Sau đó gửi qua các delivery channels
     for (const channel of channels) {
       switch (channel) {
         case 'socket':
@@ -187,16 +194,23 @@ export class NotificationManager {
           }
           break;
 
-        case 'database':
-          if (this.databaseChannel.isAvailable()) {
-            sendPromises.push(
-              this.databaseChannel.bulkSave(recipients, notification)
-            );
-          }
+        case 'email':
+          // TODO: Implement EmailChannel
+          console.warn('Email channel not implemented yet');
+          break;
+
+        case 'sms':
+          // TODO: Implement SMSChannel
+          console.warn('SMS channel not implemented yet');
+          break;
+
+        case 'push':
+          // TODO: Implement PushChannel
+          console.warn('Push notification channel not implemented yet');
           break;
 
         default:
-          console.warn(`Unknown channel: ${channel}`);
+          console.warn(`Unknown delivery channel: ${channel}`);
       }
     }
 
@@ -270,7 +284,7 @@ export class NotificationManager {
     try {
       // Merge với default config
       const config = {
-        channels: ['socket', 'database'],
+        channels: ['socket'], // Database luôn được lưu tự động
         priority: 'normal',
         expiryDays: 7,
         ui: {},
@@ -304,24 +318,6 @@ export class NotificationManager {
     if (this.socketChannel.isAvailable()) {
       await this.socketChannel.broadcast(notification);
     }
-  }
-
-  /**
-   * Test notification system
-   */
-  async test() {
-    console.log('🧪 Testing NotificationManager...');
-    
-    const testNotification = {
-      type: 'system_test',
-      title: 'Test Notification',
-      message: 'NotificationManager is working correctly',
-      priority: 'normal',
-      timestamp: new Date()
-    };
-
-    await this.broadcast(testNotification);
-    console.log('✅ NotificationManager test completed');
   }
 
   /**

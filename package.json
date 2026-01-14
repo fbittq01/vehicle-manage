@@ -4,11 +4,11 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
-    "setup:db": "node setup-database.js",
-    "test:basic": "node test-basic.js",
-    "test": "node test-basic.js"
+    "start": "node --max-old-space-size=2048 src/server.js",
+    "dev": "nodemon --max-old-space-size=2048 src/server.js",
+    "setup:db": "node --max-old-space-size=1024 setup-database.js",
+    "test:basic": "node --max-old-space-size=1024 test-basic.js",
+    "test": "node --max-old-space-size=1024 test-basic.js"
   },
   "keywords": [
     "vehicle",

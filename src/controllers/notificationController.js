@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Notification } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '../utils/response.js';
 import { getPaginationParams, createPagination } from '../utils/response.js';
@@ -221,4 +222,199 @@ export const getNotificationStats = asyncHandler(async (req, res) => {
   };
 
   sendSuccessResponse(res, result, 'Lấy thống kê thông báo thành công');
+});
+
+/**
+ * Mock Data Factory - Tạo mock data cho từng loại notification
+ */
+const createMockData = (type, userId) => {
+  const baseObjectId = new mongoose.Types.ObjectId();
+  
+  const mockDataFactories = {
+    WORKING_HOURS_REQUEST: () => ({
+      _id: baseObjectId,
+      requestedBy: {
+        _id: userId,
+        name: 'Nguyễn Văn Test',
+        employeeId: 'EMP001',
+        department: {
+          _id: new mongoose.Types.ObjectId(),
+          name: 'Phòng Kỹ thuật'
+        }
+      },
+      requestType: 'entry',
+      licensePlate: '29A-12345',
+      plannedDateTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 giờ nữa
+      reason: 'Có việc cần xử lý khẩn cấp tại công ty',
+      status: 'pending',
+      createdAt: new Date()
+    }),
+
+    WORKING_HOURS_REQUEST_UPDATE: () => ({
+      _id: "6960b2bdb8b243a6cf74da81",
+      requestedBy: {
+        _id: userId,
+        name: 'Nguyễn Văn Test',
+        employeeId: 'EMP001'
+      },
+      requestType: 'exit',
+      licensePlate: '30B-67890',
+      plannedDateTime: new Date(),
+      reason: 'Đi công tác ngoài giờ',
+      status: 'approved',
+      approvedBy: {
+        _id: new mongoose.Types.ObjectId(),
+        name: 'Trần Thị Quản lý'
+      },
+      approvedAt: new Date(),
+      createdAt: new Date(Date.now() - 1 * 60 * 60 * 1000) // 1 giờ trước
+    }),
+
+    VEHICLE_VERIFICATION: () => ({
+      _id: baseObjectId,
+      licensePlate: '51F-99999',
+      action: 'entry',
+      gateId: 'GATE_01',
+      gateName: 'Cổng chính',
+      recognitionData: {
+        confidence: 0.65,
+        processedImage: '/uploads/test-image.jpg'
+      },
+      verificationStatus: 'pending',
+      isVehicleRegistered: false,
+      owner: null,
+      vehicle: null,
+      createdAt: new Date(),
+      // Data bổ sung cho message template
+      reason: 'unknown_vehicle'
+    }),
+
+    VEHICLE_VERIFIED: () => ({
+      _id: baseObjectId,
+      licensePlate: '29A-12345',
+      action: 'entry',
+      gateId: 'GATE_01',
+      gateName: 'Cổng chính',
+      recognitionData: {
+        confidence: 0.85,
+        processedImage: '/uploads/test-image.jpg'
+      },
+      verificationStatus: 'approved',
+      isVehicleRegistered: true,
+      owner: {
+        _id: userId,
+        name: 'Nguyễn Văn Test',
+        department: {
+          _id: new mongoose.Types.ObjectId(),
+          name: 'Phòng Kỹ thuật'
+        }
+      },
+      vehicle: {
+        _id: new mongoose.Types.ObjectId(),
+        licensePlate: '29A-12345'
+      },
+      verifiedBy: {
+        _id: new mongoose.Types.ObjectId(),
+        name: 'Trần Thị Bảo vệ'
+      },
+      verificationTime: new Date(),
+      createdAt: new Date()
+    }),
+
+    VEHICLE_ACCESS: () => ({
+      _id: baseObjectId,
+      licensePlate: '30B-67890',
+      action: 'exit',
+      gateId: 'GATE_02',
+      gateName: 'Cổng phụ',
+      recognitionData: {
+        confidence: 0.95,
+        processedImage: '/uploads/test-image.jpg'
+      },
+      verificationStatus: 'auto_approved',
+      isVehicleRegistered: true,
+      owner: {
+        _id: userId,
+        name: 'Lê Văn Demo',
+        department: {
+          _id: new mongoose.Types.ObjectId(),
+          name: 'Phòng Kinh doanh'
+        }
+      },
+      vehicle: {
+        _id: new mongoose.Types.ObjectId(),
+        licensePlate: '30B-67890'
+      },
+      createdAt: new Date()
+    })
+  };
+
+  return mockDataFactories[type]?.() || null;
+};
+
+/**
+ * Test gửi notification
+ * POST /api/notifications/test
+ * Body: {
+ *   type: "WORKING_HOURS_REQUEST" | "WORKING_HOURS_REQUEST_UPDATE" | etc.,
+ *   targetUserId: "optional_user_id",
+ *   mockData: {} // optional custom mock data
+ * }
+ */
+export const testNotification = asyncHandler(async (req, res) => {
+  const notificationManager = socketServiceInstance?.getNotificationManager();
+  if (!notificationManager) {
+    return sendErrorResponse(res, 'Notification service not available', 500);
+  }
+
+  const { type, targetUserId, mockData: customMockData } = req.body;
+
+  // Validate type
+  const availableTypes = notificationManager.getAvailableTypes();
+  if (!type || !availableTypes.includes(type)) {
+    return sendErrorResponse(res, `Invalid notification type. Available types: ${availableTypes.join(', ')}`, 400);
+  }
+
+  // Tạo mock data
+  const userId = targetUserId || req.user._id;
+  const mockData = customMockData || createMockData(type, userId);
+
+  if (!mockData) {
+    return sendErrorResponse(res, `Failed to create mock data for type: ${type}`, 500);
+  }
+
+  try {
+    // Gửi notification
+    const result = await notificationManager.send(type, mockData, {
+      force: true, // Force gửi ngay cả khi có điều kiện đặc biệt
+      test: true   // Đánh dấu đây là test notification
+    });
+    console.log("🚀 ~ result:", result)
+
+    // Lấy thông tin chi tiết về notification đã gửi
+    const sentNotifications = await Notification.find({
+      type: notificationManager.getConfig(type)?.type,
+      createdAt: { $gte: new Date(Date.now() - 10000) } // Lấy notifications trong 10 giây vừa qua
+    })
+    .sort({ createdAt: -1 })
+    .limit(5)
+    .populate('userId', 'name username email');
+    console.log("🚀 ~ sentNotifications:", sentNotifications)
+
+    sendSuccessResponse(res, {
+      success: true,
+      type,
+      mockData,
+      result: {
+        notificationsSent: sentNotifications.length,
+        notifications: sentNotifications,
+        timestamp: new Date()
+      },
+      availableTypes
+    }, `Test notification ${type} đã được gửi thành công`);
+
+  } catch (error) {
+    console.error('❌ Error sending test notification:', error);
+    return sendErrorResponse(res, `Failed to send test notification: ${error.message}`, 500);
+  }
 });

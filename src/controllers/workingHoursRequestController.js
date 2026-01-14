@@ -11,7 +11,7 @@ export const setSocketService = (socketService) => {
   socketServiceInstance = socketService;
 };
 
-// Lấy danh sách yêu cầu ra / vào giờ hành chính
+// Lấy danh sách yêu cầu ra / vào giờ hành chính (Admin)
 export const getWorkingHoursRequests = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPaginationParams(req);
   const { 
@@ -37,9 +37,46 @@ export const getWorkingHoursRequests = asyncHandler(async (req, res) => {
     if (endDate) filter.plannedDateTime.$lte = getEndOfDay(endDate);
   }
 
-  // Nếu là user thường, chỉ xem yêu cầu của mình
-  if (req.user.role === 'user') {
-    filter.requestedBy = req.user._id;
+  const [requests, total] = await Promise.all([
+    WorkingHoursRequest.find(filter)
+      .populate('requestedBy', 'name username employeeId department phone')
+      .populate('approvedBy', 'name username')
+      .populate('relatedAccessLogs', 'action createdAt gateId')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    WorkingHoursRequest.countDocuments(filter)
+  ]);
+
+  const pagination = createPagination(page, limit, total);
+
+  sendPaginatedResponse(res, requests, pagination, 'Lấy danh sách yêu cầu ra/vào giờ hành chính thành công');
+});
+
+// Lấy danh sách yêu cầu của chính user
+export const getMyRequests = asyncHandler(async (req, res) => {
+  const { page, limit, skip } = getPaginationParams(req);
+  const { 
+    status, 
+    requestType, 
+    licensePlate, 
+    startDate, 
+    endDate
+  } = req.query;
+
+  // Build filter - chỉ lấy yêu cầu của chính user
+  const filter = {
+    requestedBy: req.user._id
+  };
+  
+  if (status) filter.status = status;
+  if (requestType) filter.requestType = requestType;
+  if (licensePlate) filter.licensePlate = normalizeLicensePlate(licensePlate);
+  
+  if (startDate || endDate) {
+    filter.plannedDateTime = {};
+    if (startDate) filter.plannedDateTime.$gte = getStartOfDay(startDate);
+    if (endDate) filter.plannedDateTime.$lte = getEndOfDay(endDate);
   }
 
   const [requests, total] = await Promise.all([
@@ -55,7 +92,7 @@ export const getWorkingHoursRequests = asyncHandler(async (req, res) => {
 
   const pagination = createPagination(page, limit, total);
 
-  sendPaginatedResponse(res, requests, pagination, 'Lấy danh sách yêu cầu ra/vào giờ hành chính thành công');
+  sendPaginatedResponse(res, requests, pagination, 'Lấy danh sách yêu cầu của bạn thành công');
 });
 
 // Lấy yêu cầu theo ID
@@ -185,6 +222,7 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
       console.error('Error sending working hours request notification:', error);
     }
   }
+  
 
   // Tự động approve nếu được tạo bởi admin hoặc super_admin
   if (['admin', 'super_admin'].includes(req.user.role)) {
@@ -384,7 +422,7 @@ export const approveWorkingHoursRequest = asyncHandler(async (req, res) => {
 // Từ chối yêu cầu (admin/super admin)
 export const rejectWorkingHoursRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { approvalNote } = req.body;
+  const { approvalNote } = req.body || {};
 
   const request = await WorkingHoursRequest.findById(id);
   
