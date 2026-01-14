@@ -1,4 +1,4 @@
-import { AccessLog, Vehicle, User, WorkingHours, WorkingHoursRequest } from '../models/index.js';
+import { AccessLog, Vehicle, User, WorkingHours, WorkingHoursRequest, Camera } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '../utils/response.js';
 import { getPaginationParams, createPagination, getStartOfDay, getEndOfDay } from '../utils/response.js';
 import { normalizeLicensePlate } from '../utils/licensePlate.js';
@@ -150,6 +150,17 @@ export const createAccessLogLogic = async (logData) => {
     isActive: true 
   }).populate('owner');
 
+  // Tìm camera để lấy ngưỡng auto-approve
+  let camera = null;
+  let autoApproveThreshold = 0.9; // Giá trị mặc định
+  
+  if (deviceInfo?.cameraId) {
+    camera = await Camera.findOne({ cameraId: deviceInfo.cameraId });
+    if (camera && camera.recognition?.confidence?.autoApprove) {
+      autoApproveThreshold = camera.recognition.confidence.autoApprove;
+    }
+  }
+
   // Tạo access log
   const accessLog = new AccessLog({
     licensePlate: normalizedPlate,
@@ -162,14 +173,15 @@ export const createAccessLogLogic = async (logData) => {
     isVehicleRegistered: !!vehicle,
     isOwnerActive: vehicle?.owner?.isActive || false,
     deviceInfo,
+    camera: camera?._id, // Lưu camera ObjectId
     weather
   });
 
-  // Auto-approve nếu confidence cao và vehicle đã đăng ký
-  if (recognitionData.confidence >= 0.9 && vehicle && vehicle.owner.isActive) {
+  // Auto-approve nếu confidence cao hơn ngưỡng từ camera và vehicle đã đăng ký
+  if (recognitionData.confidence >= autoApproveThreshold && vehicle && vehicle.owner.isActive) {
     accessLog.verificationStatus = 'auto_approved';
     accessLog.verificationTime = new Date();
-    accessLog.verificationNote = `Auto-approved với confidence ${recognitionData.confidence}`;
+    accessLog.verificationNote = `Auto-approved với confidence ${recognitionData.confidence} (threshold: ${autoApproveThreshold})`;
   }
 
   // Tính duration nếu là exit
