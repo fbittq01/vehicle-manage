@@ -308,7 +308,7 @@ accessLogSchema.methods.autoApprove = function(threshold = 0.9) {
   if (this.recognitionData.confidence >= threshold && this.isVehicleRegistered) {
     this.verificationStatus = 'auto_approved';
     this.verificationTime = new Date();
-    this.verificationNote = `Auto-approved với confidence ${this.recognitionData.confidence}`;
+    this.verificationNote = `Auto-approved với confidence ${this.recognitionData.confidence} (threshold: ${threshold})`;
   }
 };
 

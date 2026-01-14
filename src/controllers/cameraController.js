@@ -199,14 +199,64 @@ export const updateCamera = async (req, res) => {
       }
     }
 
-    // Merge dữ liệu cập nhật
+    // Merge dữ liệu cập nhật - chỉ cập nhật các trường có giá trị hợp lệ
     Object.keys(updateData).forEach(key => {
       if (typeof updateData[key] === 'object' && updateData[key] !== null && !Array.isArray(updateData[key])) {
-        camera[key] = { ...camera[key], ...updateData[key] };
-      } else {
+        // Đối với nested objects
+        if (!camera[key]) {
+          camera[key] = {};
+        }
+        
+        // An toàn khi lấy object cũ - kiểm tra có method toObject() không
+        const oldValue = camera[key].toObject ? camera[key].toObject() : camera[key];
+        const mergedObject = { ...oldValue };
+        
+        Object.keys(updateData[key]).forEach(nestedKey => {
+          const value = updateData[key][nestedKey];
+          
+          // Nếu value là nested object (như coordinates, roi)
+          if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            // Kiểm tra xem nested object có ít nhất 1 field hợp lệ không
+            const validFields = Object.entries(value).filter(([k, v]) => v !== undefined);
+            
+            if (validFields.length > 0) {
+              // Có field hợp lệ -> merge vào
+              mergedObject[nestedKey] = value;
+            } else {
+              // Tất cả fields đều undefined -> xóa khỏi mergedObject
+              delete mergedObject[nestedKey];
+            }
+          } else if (value !== undefined) {
+            // Giá trị nguyên thủy hợp lệ -> update
+            mergedObject[nestedKey] = value;
+          }
+          // Nếu value === undefined -> không làm gì (giữ nguyên giá trị cũ)
+        });
+        
+        camera[key] = mergedObject;
+      } else if (updateData[key] !== undefined) {
         camera[key] = updateData[key];
       }
     });
+
+    // Làm sạch coordinates nếu có giá trị undefined
+    if (camera.location && camera.location.coordinates) {
+      const coords = camera.location.coordinates;
+      // Nếu coordinates tồn tại nhưng thiếu latitude hoặc longitude -> xóa bỏ
+      if (coords.latitude === undefined || coords.longitude === undefined) {
+        camera.location.coordinates = undefined;
+      }
+    }
+
+    // Làm sạch ROI nếu thiếu các trường bắt buộc
+    if (camera.recognition && camera.recognition.roi) {
+      const roi = camera.recognition.roi;
+      // ROI phải có đủ 4 fields: x, y, width, height
+      if (roi.x === undefined || roi.y === undefined || 
+          roi.width === undefined || roi.height === undefined) {
+        camera.recognition.roi = undefined;
+      }
+    }
 
     await camera.save();
     
