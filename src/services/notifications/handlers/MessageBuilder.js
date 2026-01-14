@@ -14,8 +14,11 @@ export class MessageBuilder {
    */
   static build(config, data, context = {}) {
     try {
+      // Convert Mongoose document sang plain object trước khi flatten
+      const plainData = this.toPlainObject(data);
+      
       // Flatten data để dễ template replacement
-      const flatData = this.flattenData(data);
+      const flatData = this.flattenData(plainData);
       
       // Apply template helpers
       const processedData = this.applyHelpers(flatData);
@@ -32,13 +35,16 @@ export class MessageBuilder {
       return {
         type: config.type,
         title: config.title,
-        message,
+        message: message || `[Thông báo ${config.type}]`, // Fallback message
         data: this.prepareNotificationData(data, config),
         priority: this.resolvePriority(config.priority, data, context),
         timestamp: new Date(),
         ui: config.ui || {},
         metadata: {
-          channels: config.channels || ['socket', 'database'],
+          // Filter channels để chỉ lấy những giá trị hợp lệ trong enum
+          channels: (config.channels || ['socket']).filter(ch => 
+            ['socket', 'email', 'sms', 'push'].includes(ch)
+          ),
           expiryDays: config.expiryDays,
           relatedId: this.extractRelatedId(data),
           relatedModel: this.getRelatedModel(config.type)
@@ -51,22 +57,96 @@ export class MessageBuilder {
   }
 
   /**
+   * Convert Mongoose document sang plain JavaScript object
+   * Loại bỏ các internal fields như _doc, $__, etc.
+   * @param {any} data - Data có thể là Mongoose doc hoặc plain object
+   * @returns {any} Plain object
+   */
+  static toPlainObject(data) {
+    if (!data) return data;
+    
+    // Nếu là Mongoose document, dùng toObject() - ĐÃ XONG, return luôn
+    if (data.constructor && (data.constructor.name === 'model' || data._doc || data.$__)) {
+      if (typeof data.toObject === 'function') {
+        return data.toObject(); // toObject() đã loại bỏ internal fields
+      }
+    }
+    
+    // Nếu là Array, convert từng phần tử
+    if (Array.isArray(data)) {
+      return data.map(item => this.toPlainObject(item));
+    }
+    
+    // Nếu là plain object thuần, giữ nguyên
+    if (typeof data === 'object' && data !== null && data.constructor === Object) {
+      return data;
+    }
+    
+    // Các kiểu khác (Date, Number, String, etc.) return nguyên
+    return data;
+  }
+
+  /**
    * Flatten nested object để dễ template replacement
    * @param {Object} obj - Object cần flatten
    * @param {string} prefix - Prefix cho nested keys
+   * @param {Set} visited - Set of visited objects (để tránh circular reference)
+   * @param {number} depth - Current depth (để giới hạn độ sâu)
    * @returns {Object} Flattened object
    */
-  static flattenData(obj, prefix = '') {
+  static flattenData(obj, prefix = '', visited = new Set(), depth = 0) {
+    const MAX_DEPTH = 5; // Giới hạn độ sâu để tránh infinite recursion
     const flattened = {};
     
+    // Kiểm tra giới hạn độ sâu
+    if (depth > MAX_DEPTH) {
+      console.warn(`Max depth ${MAX_DEPTH} reached while flattening data at prefix: ${prefix}`);
+      return flattened;
+    }
+    
+    // Kiểm tra circular reference
+    if (visited.has(obj)) {
+      console.warn(`Circular reference detected at prefix: ${prefix}`);
+      return flattened;
+    }
+    
+    // Thêm vào visited set
+    visited.add(obj);
+    
     for (const key in obj) {
-      if (obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key]) && !(obj[key] instanceof Date)) {
-        // Recurse for nested objects
-        Object.assign(flattened, this.flattenData(obj[key], prefix + key + '.'));
+      if (!obj.hasOwnProperty(key)) continue;
+      
+      const value = obj[key];
+      
+      // Skip null/undefined
+      if (value === null || value === undefined) {
+        flattened[prefix + key] = value;
+        continue;
+      }
+      
+      // Check if it's a primitive or special object
+      const isPrimitive = typeof value !== 'object';
+      const isDate = value instanceof Date;
+      const isArray = Array.isArray(value);
+      const isObjectId = value.constructor.name === 'ObjectId' || value._bsontype === 'ObjectId';
+      
+      if (isPrimitive || isDate || isArray || isObjectId) {
+        // Convert ObjectId to string
+        flattened[prefix + key] = isObjectId ? value.toString() : value;
       } else {
-        flattened[prefix + key] = obj[key];
+        // Recurse for nested objects
+        try {
+          const nested = this.flattenData(value, prefix + key + '.', visited, depth + 1);
+          Object.assign(flattened, nested);
+        } catch (error) {
+          console.warn(`Error flattening nested object at ${prefix + key}:`, error.message);
+          flattened[prefix + key] = '[Object]';
+        }
       }
     }
+    
+    // Remove from visited set khi done
+    visited.delete(obj);
     
     return flattened;
   }
@@ -102,20 +182,18 @@ export class MessageBuilder {
   /**
    * Render template với data
    * @param {string} template - Template string
-   * @param {Object} data - Data to replace
+   * @param {Object} data - Flattened data (keys như 'requestedBy.name')
    * @returns {string} Rendered message
    */
   static renderTemplate(template, data) {
     return template.replace(/\{([^}]+)\}/g, (match, path) => {
-      // Hỗ trợ nested path như {requestedBy.name}
-      const value = this.getNestedValue(data, path);
-      return value !== undefined ? value : match;
+      // Data đã flatten, nên tìm trực tiếp key (VD: data['requestedBy.name'])
+      const value = data[path];
+      return value !== undefined && value !== null ? value : match;
     });
   }
 
   /**
-   * Lấy nested value từ object
-   * @param {Object} obj - Source object
    * @param {string} path - Path như 'requestedBy.name'
    * @returns {any} Value hoặc undefined
    */

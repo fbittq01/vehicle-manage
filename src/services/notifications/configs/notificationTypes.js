@@ -12,7 +12,7 @@ export const NOTIFICATION_TYPES = {
     priority: 'normal',
     expiryDays: 7,
     requiresPopulate: ['requestedBy', 'requestedBy.department'],
-    channels: ['socket', 'database'],
+    channels: ['socket'],
     ui: {
       showModal: false,
       playSound: true,
@@ -29,7 +29,7 @@ export const NOTIFICATION_TYPES = {
     priority: 'normal',
     expiryDays: 3,
     requiresPopulate: ['requestedBy', 'approvedBy'],
-    channels: ['socket', 'database'],
+    channels: ['socket'],
     ui: {
       showModal: false,
       playSound: true,
@@ -46,7 +46,7 @@ export const NOTIFICATION_TYPES = {
     priority: 'normal',
     expiryDays: 1,
     requiresPopulate: ['owner', 'owner.department', 'vehicle'],
-    channels: ['socket', 'database'],
+    channels: ['socket'],
     ui: {
       showModal: false,
       playSound: true,
@@ -63,7 +63,7 @@ export const NOTIFICATION_TYPES = {
     priority: 'normal',
     expiryDays: 7,
     requiresPopulate: ['owner', 'verifiedBy'],
-    channels: ['socket', 'database'],
+    channels: ['socket'],
     ui: {
       showModal: false,
       playSound: false,
@@ -80,7 +80,7 @@ export const NOTIFICATION_TYPES = {
     priority: 'low',
     expiryDays: 3,
     requiresPopulate: ['owner', 'owner.department', 'vehicle'],
-    channels: ['socket', 'database'],
+    channels: ['socket'],
     ui: {
       showModal: false,
       playSound: false,

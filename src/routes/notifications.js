@@ -5,7 +5,8 @@ import {
   getUnreadCount,
   markAsRead,
   markAllAsRead,
-  getNotificationById
+  getNotificationById,
+  testNotification
 } from '../controllers/notificationController.js';
 import {
   authenticateToken
@@ -28,6 +29,9 @@ router.get('/unread/count', activityMiddleware('VIEW_NOTIFICATION', 'notificatio
 
 // Alias cho unread-count (hỗ trợ frontend gọi /unread-count)
 router.get('/unread-count', activityMiddleware('VIEW_NOTIFICATION', 'notifications'), getUnreadCount);
+
+// Test gửi notification (phải đặt TRƯỚC route /:id)
+router.post('/test', testNotification);
 
 // Lấy chi tiết một thông báo (phải đặt SAU các routes cụ thể)
 router.get('/:id', activityMiddleware('VIEW_NOTIFICATION', 'notifications'), getNotificationById);

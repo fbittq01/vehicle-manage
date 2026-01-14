@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   getWorkingHoursRequests,
+  getMyRequests,
   getWorkingHoursRequestById,
   createWorkingHoursRequest,
   updateWorkingHoursRequest,
@@ -30,7 +31,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // User routes - người dùng có thể tạo và quản lý yêu cầu của mình
-router.get('/my-requests', validateWorkingHoursRequestQuery, activityMiddleware('VIEW_WORKING_HOURS_REQUEST', 'working_hours_requests'), getWorkingHoursRequests);
+router.get('/my-requests', validateWorkingHoursRequestQuery, activityMiddleware('VIEW_WORKING_HOURS_REQUEST', 'working_hours_requests'), getMyRequests);
 router.post('/', validateWorkingHoursRequest, activityMiddleware('CREATE_WORKING_HOURS_REQUEST', 'working_hours_requests'), createWorkingHoursRequest);
 router.get('/:id', validateWorkingHoursRequestParams, activityMiddleware('VIEW_WORKING_HOURS_REQUEST', 'working_hours_requests'), getWorkingHoursRequestById);
 router.put('/:id', validateWorkingHoursRequestParams, validateUpdateWorkingHoursRequest, activityMiddleware('UPDATE_WORKING_HOURS_REQUEST', 'working_hours_requests'), updateWorkingHoursRequest);

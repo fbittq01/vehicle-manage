@@ -15,7 +15,7 @@ export const generalLimiter = rateLimit({
 // Rate limiting cho đăng nhập (nghiêm ngặt hơn)
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 phút
-  max: 10, // 10 attempts per window
+  max: 100, // 10 attempts per window
   message: {
     success: false,
     message: 'Quá nhiều lần đăng nhập thất bại, vui lòng thử lại sau 15 phút.'
