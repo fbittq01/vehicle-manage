@@ -40,7 +40,6 @@ export class NotificationManager {
 
       // Populate data nếu cần
       const populatedData = await this.populateData(data, config);
-      console.log("🚀 ~ NotificationManager ~ send ~ populatedData:", populatedData)
 
       // Tạo context cho audience resolution
       const context = await this.buildContext(populatedData, config, options);
@@ -48,14 +47,13 @@ export class NotificationManager {
       // Validate context
       if (!AudienceResolver.validateContext(config.audience, context)) {
         console.warn(`Invalid context for audience ${config.audience}:`, context);
-        return;
+        return null;
       }
 
       // Tìm recipients
       const recipients = await AudienceResolver.resolve(config.audience, context);
       if (!recipients || recipients.length === 0) {
-        // console.warn(`No recipients for ${notificationType}`);
-        return;
+        return null;
       }
 
       // Build notification object
@@ -64,10 +62,10 @@ export class NotificationManager {
       // Get socket rooms
       const rooms = AudienceResolver.getSocketRooms(config.audience, context);
 
-      // Send qua các channels
-      await this.sendToChannels(config.channels, recipients, notification, rooms);
+      // Send qua các channels và trả về saved notifications
+      const savedNotifications = await this.sendToChannels(config.channels, recipients, notification, rooms);
 
-      // console.log(`✅ Notification sent: ${notificationType} to ${recipients.length} recipients`);
+      return savedNotifications;
 
     } catch (error) {
       console.error(`❌ Error sending notification ${notificationType}:`, error);
@@ -167,30 +165,33 @@ export class NotificationManager {
 
   /**
    * Gửi notification qua các channels
-   * Database LUÔN được lưu (persistence), channels chỉ quyết định cách GIAO (delivery)
+   * Database LUÔN được lưu trước (persistence), sau đó gửi qua socket kèm notification ID
    * @param {Array} channels - Danh sách delivery channels
    * @param {Array} recipients - Recipients
    * @param {Object} notification - Notification object
    * @param {Array} rooms - Socket rooms
+   * @returns {Array} Saved notifications
    */
   async sendToChannels(channels, recipients, notification, rooms) {
-    const sendPromises = [];
+    let savedNotifications = [];
 
-    // LUÔN lưu vào database trước (persistence layer)
+    // BƯỚC 1: Lưu vào database trước để lấy notification IDs
     if (this.databaseChannel.isAvailable()) {
-      sendPromises.push(
-        this.databaseChannel.bulkSave(recipients, notification)
-      );
+      savedNotifications = await this.databaseChannel.bulkSave(recipients, notification);
     }
 
-    // Sau đó gửi qua các delivery channels
+    // BƯỚC 2: Gửi qua các delivery channels kèm notification IDs
     for (const channel of channels) {
       switch (channel) {
         case 'socket':
           if (this.socketChannel.isAvailable()) {
-            sendPromises.push(
-              this.socketChannel.send(recipients, notification, rooms)
-            );
+            // Gửi notification kèm IDs từ database
+            const notificationWithIds = savedNotifications.map(saved => ({
+              ...notification,
+              _id: saved._id,
+              notificationId: saved._id
+            }));
+            await this.socketChannel.sendWithIds(recipients, notificationWithIds, rooms);
           }
           break;
 
@@ -214,8 +215,7 @@ export class NotificationManager {
       }
     }
 
-    // Send parallel
-    await Promise.allSettled(sendPromises);
+    return savedNotifications;
   }
 
   // =============================================================================
@@ -240,7 +240,7 @@ export class NotificationManager {
    * Gửi thông báo xe cần xác minh (tối giản hóa - bao gồm xe lạ và xe có độ tin cậy thấp)
    */
   async notifyVehicleVerification(accessLog, reason = 'manual_review') {
-    await this.send('VEHICLE_VERIFICATION', accessLog, { reason });
+    return await this.send('VEHICLE_VERIFICATION', accessLog, { reason });
   }
 
   /**
@@ -252,7 +252,7 @@ export class NotificationManager {
 
   // Backward compatibility methods
   async notifyAccessLogVerification(accessLog) {
-    await this.notifyVehicleVerification(accessLog, 'manual_review');
+    return await this.notifyVehicleVerification(accessLog, 'manual_review');
   }
 
   async notifyAccessLogVerified(accessLog) {

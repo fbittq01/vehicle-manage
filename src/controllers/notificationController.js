@@ -289,6 +289,52 @@ const createMockData = (type, userId) => {
       reason: 'unknown_vehicle'
     }),
 
+    // Test riêng cho trường hợp XE LẠ
+    VEHICLE_VERIFICATION_UNKNOWN: () => ({
+      _id: baseObjectId,
+      licensePlate: '99Z-88888',
+      action: 'entry',
+      gateId: 'GATE_01',
+      gateName: 'Cổng chính',
+      recognitionData: {
+        confidence: 0.92, // Confidence cao nhưng xe lạ
+        processedImage: '/uploads/unknown-vehicle.jpg'
+      },
+      verificationStatus: 'pending',
+      isVehicleRegistered: false, // Xe chưa đăng ký - XE LẠ
+      owner: null,
+      vehicle: null,
+      createdAt: new Date()
+    }),
+
+    // Test riêng cho trường hợp ĐỘ TIN CẬY THẤP
+    VEHICLE_VERIFICATION_LOW_CONFIDENCE: () => ({
+      _id: baseObjectId,
+      licensePlate: '29A-12345',
+      action: 'entry',
+      gateId: 'GATE_02',
+      gateName: 'Cổng phụ',
+      recognitionData: {
+        confidence: 0.65, // Confidence thấp < 0.9
+        processedImage: '/uploads/low-confidence.jpg'
+      },
+      verificationStatus: 'pending',
+      isVehicleRegistered: true, // Xe đã đăng ký nhưng độ tin cậy thấp
+      owner: {
+        _id: userId,
+        name: 'Nguyễn Văn Test',
+        department: {
+          _id: new mongoose.Types.ObjectId(),
+          name: 'Phòng Kỹ thuật'
+        }
+      },
+      vehicle: {
+        _id: new mongoose.Types.ObjectId(),
+        licensePlate: '29A-12345'
+      },
+      createdAt: new Date()
+    }),
+
     VEHICLE_VERIFIED: () => ({
       _id: baseObjectId,
       licensePlate: '29A-12345',
@@ -384,11 +430,27 @@ export const testNotification = asyncHandler(async (req, res) => {
   }
 
   try {
-    // Gửi notification
-    const result = await notificationManager.send(type, mockData, {
+    // Xác định reason cho VEHICLE_VERIFICATION types
+    let options = {
       force: true, // Force gửi ngay cả khi có điều kiện đặc biệt
       test: true   // Đánh dấu đây là test notification
-    });
+    };
+
+    // Auto-detect reason cho VEHICLE_VERIFICATION
+    if (type.startsWith('VEHICLE_VERIFICATION')) {
+      if (type === 'VEHICLE_VERIFICATION_UNKNOWN') {
+        options.reason = 'unknown_vehicle';
+      } else if (type === 'VEHICLE_VERIFICATION_LOW_CONFIDENCE') {
+        options.reason = 'low_confidence';
+      } else if (!mockData.isVehicleRegistered) {
+        options.reason = 'unknown_vehicle';
+      } else if (mockData.recognitionData?.confidence < 0.9) {
+        options.reason = 'low_confidence';
+      }
+    }
+
+    // Gửi notification
+    const result = await notificationManager.send('VEHICLE_VERIFICATION', mockData, options);
     console.log("🚀 ~ result:", result)
 
     // Lấy thông tin chi tiết về notification đã gửi

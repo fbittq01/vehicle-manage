@@ -190,10 +190,10 @@ export const processRecognitionImages = async (recognitionData, licensePlate, ac
     }
 
     // Xử lý videoUrl (video base64)
-    if (recognitionData.videoUrl && isBase64Video(recognitionData.videoUrl)) {
+    if (recognitionData.video && isBase64Video(recognitionData.video)) {
       const filename = `${safeFileName}_${action}_video_${timestamp}_${randomSuffix}`;
-      processedData.videoUrl = await saveBase64Video(
-        recognitionData.videoUrl,
+      processedData.video = await saveBase64Video(
+        recognitionData.video,
         'videos',
         filename
       );
