@@ -220,34 +220,6 @@ export const createAccessLogLogic = async (logData) => {
     .populate('owner', 'name username phone')
     .populate('verifiedBy', 'name username');
 
-  // Gửi thông báo dựa trên loại xe
-  if (socketServiceInstance) {
-    try {
-      // Kiểm tra nếu là xe lạ (không đăng ký)
-      if (!populatedLog.isVehicleRegistered) {
-        console.log('Sending unknown vehicle notification via socketService');
-        await socketServiceInstance.notifyUnknownVehicle(populatedLog);
-      } else {
-        // Gửi thông báo vehicle access cho xe đã đăng ký
-        console.log('Sending vehicle access notification via socketService');
-        await socketServiceInstance.notifyVehicleAccess(populatedLog);
-      }
-    } catch (error) {
-      console.error('Error sending vehicle access notification:', error);
-    }
-  }
-
-  // Gửi thông báo nếu cần verification thủ công
-  if (populatedLog.verificationStatus === 'pending' && socketServiceInstance) {
-    try {
-      console.log('Sending access log verification notification via socketService');
-      
-      await socketServiceInstance.notifyAccessLogVerification(populatedLog);
-    } catch (error) {
-      console.error('Error sending access log verification notification:', error);
-    }
-  }
-
   return { populatedLog, vehicle };
 };
 

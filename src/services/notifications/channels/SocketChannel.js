@@ -28,12 +28,45 @@ export class SocketChannel {
       for (const room of rooms) {
         this.socketService.io.to(room).emit('notification', notification);
       }
-
-      // Log disabled - uncomment if needed
-      // console.log(`Socket sent: ${notification.title}`);
       
     } catch (error) {
       console.error('Error sending socket notification:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gửi notification qua socket kèm notification ID từ database
+   * @param {Array} recipients - Danh sách recipients
+   * @param {Array} notificationsWithIds - Mảng notification objects có kèm _id
+   * @param {Array} rooms - Socket rooms
+   */
+  async sendWithIds(recipients, notificationsWithIds, rooms = []) {
+    if (!this.socketService?.io) {
+      console.warn('Socket service not available');
+      return;
+    }
+
+    try {
+      // Gửi tới từng user với notification ID tương ứng
+      for (let i = 0; i < recipients.length; i++) {
+        const recipient = recipients[i];
+        const notification = notificationsWithIds[i];
+        
+        if (notification) {
+          this.socketService.io.to(`user_${recipient._id}`).emit('notification', notification);
+        }
+      }
+
+      // Gửi tới rooms (sử dụng notification đầu tiên làm mẫu)
+      if (notificationsWithIds.length > 0) {
+        for (const room of rooms) {
+          this.socketService.io.to(room).emit('notification', notificationsWithIds[0]);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error sending socket notification with IDs:', error);
       throw error;
     }
   }

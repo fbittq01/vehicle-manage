@@ -435,7 +435,7 @@ class SocketService {
     try {
       const messageString = data.toString();
       if (!messageString.trim().startsWith('{') && !messageString.trim().startsWith('[')) {
-        console.warn('Received non-JSON message from Python Detection server:', messageString);
+        // console.warn('Received non-JSON message from Python Detection server:', messageString);
         return;
       }
       const message = JSON.parse(data.toString());
@@ -523,7 +523,6 @@ class SocketService {
 
   // Xử lý kết quả nhận diện biển số
   async handleLicensePlateDetection(data) {
-    console.log("🚀 ~ SocketService ~ handleLicensePlateDetection ~ data:", data)
     try {
       const {
         licensePlate,
@@ -578,12 +577,13 @@ class SocketService {
         needsManualVerification: populatedLog.verificationStatus === 'pending'
       };
 
-      // Gửi tới specific gate
-      this.io.to(`gate_${gateId}`).emit('vehicle_detected', responseData);
-
-      // Gửi tới admin nếu cần manual verification
-      if (populatedLog.verificationStatus === 'pending') {
-        this.io.emit('manual_verification_needed', responseData);
+      // Gửi thông báo khi cần xác minh (xe lạ hoặc xe pending)
+      try {
+        if (!populatedLog.isVehicleRegistered || populatedLog.verificationStatus === 'pending') {
+          await this.notifyAccessLogVerification(populatedLog);
+        }
+      } catch (notifyError) {
+        console.error('Error sending notification:', notifyError);
       }
 
       console.log(`License plate detected: ${normalizedPlate} at gate ${gateId}`);
