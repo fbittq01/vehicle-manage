@@ -75,6 +75,65 @@ export const isBase64Image = (str) => {
 };
 
 /**
+ * Kiểm tra xem string có phải là base64 video không
+ * @param {string} str - String cần kiểm tra
+ * @returns {boolean} - True nếu là base64 video
+ */
+export const isBase64Video = (str) => {
+  if (!str || typeof str !== 'string') return false;
+  
+  // Kiểm tra prefix data:video/
+  if (str.startsWith('data:video/')) {
+    return true;
+  }
+  
+  return false;
+};
+
+/**
+ * Lưu video base64 vào local storage
+ * @param {string} base64Data - Dữ liệu video dạng base64 (có prefix data:video/...)
+ * @param {string} folder - Thư mục con để lưu (ví dụ: 'access-logs')
+ * @param {string} filename - Tên file (không có extension)
+ * @returns {Promise<string>} - Đường dẫn URL của file đã lưu
+ */
+export const saveBase64Video = async (base64Data, folder, filename) => {
+  try {
+    let videoData = base64Data;
+    let fileExtension = 'mp4'; // Default extension
+
+    // Nếu có prefix data:video/..., extract data và extension
+    if (base64Data.startsWith('data:video/')) {
+      const matches = base64Data.match(/^data:video\/([a-zA-Z0-9]+);base64,(.+)$/);
+      if (matches) {
+        fileExtension = matches[1];
+        videoData = matches[2];
+      }
+    }
+
+    // Tạo buffer từ base64
+    const buffer = Buffer.from(videoData, 'base64');
+
+    // Tạo đường dẫn thư mục
+    const folderPath = path.join(UPLOADS_BASE_PATH, folder);
+    await fs.mkdir(folderPath, { recursive: true });
+
+    // Tạo tên file cuối cùng
+    const finalFilename = `${filename}.${fileExtension}`;
+    const filePath = path.join(folderPath, finalFilename);
+
+    // Lưu file
+    await fs.writeFile(filePath, buffer);
+
+    // Trả về URL relative từ uploads folder
+    return `/uploads/${folder}/${finalFilename}`;
+  } catch (error) {
+    console.error('Lỗi khi lưu video base64:', error);
+    throw new Error('Không thể lưu video vào storage');
+  }
+};
+
+/**
  * Xóa file ảnh từ local storage
  * @param {string} imageUrl - URL của ảnh cần xóa (ví dụ: /uploads/access-logs/image_123456.jpg)
  * @returns {Promise<boolean>} - True nếu xóa thành công
@@ -126,6 +185,16 @@ export const processRecognitionImages = async (recognitionData, licensePlate, ac
       processedData.originalImage = await saveBase64Image(
         recognitionData.originalImage,
         'access-logs',
+        filename
+      );
+    }
+
+    // Xử lý videoUrl (video base64)
+    if (recognitionData.videoUrl && isBase64Video(recognitionData.videoUrl)) {
+      const filename = `${safeFileName}_${action}_video_${timestamp}_${randomSuffix}`;
+      processedData.videoUrl = await saveBase64Video(
+        recognitionData.videoUrl,
+        'videos',
         filename
       );
     }
