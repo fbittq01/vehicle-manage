@@ -43,7 +43,7 @@ export const NOTIFICATION_TYPES = {
     audience: 'supervisors',
     template: 'Xe {licensePlate} {action} tại {gateName} cần xác minh{reason}',
     title: 'Xe cần xác minh',
-    priority: 'normal',
+    priority: 'high',
     expiryDays: 1,
     requiresPopulate: ['owner', 'owner.department', 'vehicle'],
     channels: ['socket'],
