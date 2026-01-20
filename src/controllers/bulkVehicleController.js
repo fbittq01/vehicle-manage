@@ -4,7 +4,6 @@ import { sendSuccessResponse, sendErrorResponse } from '../utils/response.js';
 import { asyncHandler } from '../middleware/logger.js';
 import { normalizeLicensePlate, validateVietnameseLicensePlate } from '../utils/licensePlate.js';
 import bcrypt from 'bcryptjs';
-import mongoose from 'mongoose';
 
 // Tạo file Excel mẫu cho bulk upload vehicles
 export const getVehicleTemplate = asyncHandler(async (req, res) => {
@@ -74,8 +73,6 @@ export const getVehicleTemplate = asyncHandler(async (req, res) => {
 
 // Bulk upload vehicles từ Excel file
 export const bulkUploadVehicles = asyncHandler(async (req, res) => {
-  const session = await mongoose.startSession();
-  
   try {
     // Kiểm tra quyền admin
     if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
@@ -111,112 +108,109 @@ export const bulkUploadVehicles = asyncHandler(async (req, res) => {
       createdVehicles: []
     };
 
-    await session.withTransaction(async () => {
-      for (let i = 0; i < data.length; i++) {
-        const row = data[i];
-        const rowIndex = i + 2; // +2 vì Excel bắt đầu từ dòng 1 và có header
-        
-        try {
-          // Validate dữ liệu bắt buộc
-          const licensePlate = row['Biển số xe'];
-          const vehicleType = row['Loại xe (car/motorcycle/truck/bus/bicycle/other)'];
-          const ownerName = row['Họ và tên chủ xe'];
-          const phone = row['Số điện thoại'];
-          const employeeId = row['Mã nhân viên'];
+    // Xử lý từng dòng dữ liệu
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const rowIndex = i + 2; // +2 vì Excel bắt đầu từ dòng 1 và có header
+      
+      try {
+        // Validate dữ liệu bắt buộc
+        const licensePlate = row['Biển số xe'];
+        const vehicleType = row['Loại xe (car/motorcycle/truck/bus/bicycle/other)'];
+        const ownerName = row['Họ và tên chủ xe; cấp bậc, chức vụ, đơn vị'];
+        const phone = row['Số điện thoại'];
+        const employeeId = row['Mã nhân viên'];
 
-          if (!licensePlate || !vehicleType || !ownerName || !employeeId) {
-            throw new Error(`Dòng ${rowIndex}: Thiếu thông tin bắt buộc (Biển số xe, Loại xe, Họ và tên chủ xe, Mã nhân viên)`);
-          }
-
-          // Normalize và validate biển số
-          const normalizedLicensePlate = normalizeLicensePlate(licensePlate);
-          if (!validateVietnameseLicensePlate(normalizedLicensePlate)) {
-            throw new Error(`Dòng ${rowIndex}: Biển số xe không hợp lệ`);
-          }
-
-          // Validate loại xe
-          const validVehicleTypes = ['car', 'motorcycle', 'truck', 'bus', 'bicycle', 'other'];
-          if (!validVehicleTypes.includes(vehicleType)) {
-            throw new Error(`Dòng ${rowIndex}: Loại xe không hợp lệ. Phải là một trong: ${validVehicleTypes.join(', ')}`);
-          }
-
-          // Kiểm tra biển số đã tồn tại
-          const existingVehicle = await Vehicle.findOne({ 
-            licensePlate: normalizedLicensePlate 
-          }).session(session);
-          
-          if (existingVehicle) {
-            throw new Error(`Dòng ${rowIndex}: Biển số xe ${normalizedLicensePlate} đã tồn tại`);
-          }
-
-          // Tạo username từ tên và mã nhân viên
-          const username = createUsername(ownerName, employeeId);
-          
-          // Tìm hoặc tạo user
-          let owner = await User.findOne({ 
-            $or: [
-              { username: username },
-              { employeeId: employeeId }
-            ]
-          }).session(session);
-
-          if (!owner) {
-            // Tạo user mới
-            const defaultPassword = process.env.DEFAULT_USER_PASSWORD || 'Admin@123';
-            
-            owner = new User({
-              username: username,
-              password: defaultPassword,
-              name: ownerName,
-              phone: phone || '',
-              employeeId: employeeId,
-              department: adminDepartment,
-              role: 'user'
-            });
-
-            await owner.save({ session });
-            results.createdUsers.push({
-              username: username,
-              name: ownerName,
-              employeeId: employeeId,
-              defaultPassword: defaultPassword
-            });
-          } else {
-            // Kiểm tra user có thuộc cùng department không
-            if (owner.department.toString() !== adminDepartment.toString()) {
-              throw new Error(`Dòng ${rowIndex}: Nhân viên ${ownerName} không thuộc phòng ban của bạn`);
-            }
-          }
-
-          // Tạo vehicle mới
-          const vehicle = new Vehicle({
-            licensePlate: normalizedLicensePlate,
-            owner: owner._id,
-            vehicleType: vehicleType,
-            name: row['Tên xe'] || '',
-            color: row['Màu sắc'] || '',
-            description: row['Mô tả'] || ''
-          });
-
-          await vehicle.save({ session });
-          results.createdVehicles.push({
-            licensePlate: normalizedLicensePlate,
-            owner: ownerName,
-            vehicleType: vehicleType
-          });
-
-          results.success++;
-        } catch (error) {
-          results.failed++;
-          results.errors.push({
-            row: rowIndex,
-            error: error.message
-          });
+        if (!licensePlate || !vehicleType || !ownerName || !employeeId) {
+          throw new Error(`Dòng ${rowIndex}: Thiếu thông tin bắt buộc (Biển số xe, Loại xe, Họ và tên chủ xe, Mã nhân viên)`);
         }
-      }
-    });
 
-    await session.endSession();
+        // Normalize và validate biển số
+        const normalizedLicensePlate = normalizeLicensePlate(licensePlate);
+        if (!validateVietnameseLicensePlate(normalizedLicensePlate)) {
+          throw new Error(`Dòng ${rowIndex}: Biển số xe không hợp lệ`);
+        }
+
+        // Validate loại xe
+        const validVehicleTypes = ['car', 'motorcycle', 'truck', 'bus', 'bicycle', 'other'];
+        if (!validVehicleTypes.includes(vehicleType)) {
+          throw new Error(`Dòng ${rowIndex}: Loại xe không hợp lệ. Phải là một trong: ${validVehicleTypes.join(', ')}`);
+        }
+
+        // Kiểm tra biển số đã tồn tại
+        const existingVehicle = await Vehicle.findOne({ 
+          licensePlate: normalizedLicensePlate 
+        });
+        
+        if (existingVehicle) {
+          throw new Error(`Dòng ${rowIndex}: Biển số xe ${normalizedLicensePlate} đã tồn tại`);
+        }
+
+        // Tạo username từ tên và mã nhân viên
+        const username = createUsername(ownerName, employeeId);
+        
+        // Tìm hoặc tạo user
+        let owner = await User.findOne({ 
+          $or: [
+            { username: username },
+            { employeeId: employeeId }
+          ]
+        });
+
+        if (!owner) {
+          // Tạo user mới
+          const defaultPassword = process.env.DEFAULT_USER_PASSWORD || 'Admin@123';
+          
+          owner = new User({
+            username: username,
+            password: defaultPassword,
+            name: ownerName,
+            phone: phone || '',
+            employeeId: employeeId,
+            department: adminDepartment,
+            role: 'user'
+          });
+
+          await owner.save();
+          results.createdUsers.push({
+            username: username,
+            name: ownerName,
+            employeeId: employeeId,
+            defaultPassword: defaultPassword
+          });
+        } else {
+          // Kiểm tra user có thuộc cùng department không
+          if (owner.department.toString() !== adminDepartment.toString()) {
+            throw new Error(`Dòng ${rowIndex}: Nhân viên ${ownerName} không thuộc phòng ban của bạn`);
+          }
+        }
+
+        // Tạo vehicle mới
+        const vehicle = new Vehicle({
+          licensePlate: normalizedLicensePlate,
+          owner: owner._id,
+          vehicleType: vehicleType,
+          name: row['Tên xe'] || '',
+          color: row['Màu sắc'] || '',
+          description: row['Mô tả'] || ''
+        });
+
+        await vehicle.save();
+        results.createdVehicles.push({
+          licensePlate: normalizedLicensePlate,
+          owner: ownerName,
+          vehicleType: vehicleType
+        });
+
+        results.success++;
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          row: rowIndex,
+          error: error.message
+        });
+      }
+    }
 
     // Trả về kết quả
     const responseData = {
@@ -241,7 +235,6 @@ export const bulkUploadVehicles = asyncHandler(async (req, res) => {
     sendSuccessResponse(res, responseData, 'Bulk upload vehicles thành công');
 
   } catch (error) {
-    await session.endSession();
     console.error('Bulk upload error:', error);
     sendErrorResponse(res, 'Lỗi khi thực hiện bulk upload: ' + error.message, 500);
   }
