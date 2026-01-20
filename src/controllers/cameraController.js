@@ -452,7 +452,9 @@ export const getRecognitionEnabledCameras = async (req, res) => {
           protocol: camera.technical?.protocol,
           streamUrl: camera.technical?.streamUrl,
           resolution: camera.technical?.resolution,
-          fps: camera.technical?.fps
+          fps: camera.technical?.fps,
+          username: camera.technical?.username,
+          password: camera.technical?.password
         },
         streaming: camera.streaming,
         status: camera.status,
