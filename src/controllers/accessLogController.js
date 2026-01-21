@@ -21,7 +21,7 @@ export const getAccessLogs = asyncHandler(async (req, res) => {
     action, 
     verificationStatus, 
     gateId, 
-    licensePlate, 
+    search, 
     startDate, 
     endDate,
     isVehicleRegistered 
@@ -34,10 +34,6 @@ export const getAccessLogs = asyncHandler(async (req, res) => {
   if (verificationStatus) baseFilter.verificationStatus = verificationStatus;
   if (gateId) baseFilter.gateId = gateId;
   if (isVehicleRegistered !== undefined) baseFilter.isVehicleRegistered = isVehicleRegistered === 'true';
-  
-  if (licensePlate) {
-    baseFilter.licensePlate = normalizeLicensePlate(licensePlate);
-  }
   
   if (startDate || endDate) {
     baseFilter.createdAt = {};
@@ -52,7 +48,32 @@ export const getAccessLogs = asyncHandler(async (req, res) => {
       allowSelfOnly: true
     });
 
-    const filter = { ...baseFilter, ...departmentFilter };
+    let filter = { ...baseFilter, ...departmentFilter };
+
+    // Xử lý tìm kiếm nếu có tham số search
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      const normalizedPlate = normalizeLicensePlate(searchTerm);
+      
+      // Tìm các User phù hợp với search term (tên hoặc số điện thoại)
+      const matchingUsers = await User.find({
+        $or: [
+          { name: { $regex: searchTerm, $options: 'i' } },
+          { phone: { $regex: searchTerm, $options: 'i' } }
+        ]
+      }).select('_id');
+      
+      const userIds = matchingUsers.map(user => user._id);
+      
+      // Thêm điều kiện tìm kiếm: biển số HOẶC chủ xe
+      filter = {
+        ...filter,
+        $or: [
+          { licensePlate: { $regex: normalizedPlate, $options: 'i' } },
+          { owner: { $in: userIds } }
+        ]
+      };
+    }
 
     // Execute query
     const [logs, total] = await Promise.all([
