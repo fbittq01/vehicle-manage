@@ -586,6 +586,12 @@ class SocketService {
         console.error('Error sending notification:', notifyError);
       }
 
+      // Broadcast access log mới tới tất cả clients để refresh danh sách
+      this.broadcast('access_log_created', {
+        accessLog: populatedLog,
+        timestamp: new Date()
+      });
+
       console.log(`License plate detected: ${normalizedPlate} at gate ${gateId}`);
 
     } catch (error) {
