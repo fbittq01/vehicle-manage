@@ -232,10 +232,6 @@ export class MessageBuilder {
         break;
 
       case 'vehicle_verification':
-      case 'vehicle_verified':
-      case 'access_log_verification': // backward compatibility
-      case 'access_log_verified': // backward compatibility
-      case 'unknown_vehicle_access': // backward compatibility
       case 'vehicle_access':
         Object.assign(notificationData, {
           accessLogId: rawData._id,
@@ -247,7 +243,16 @@ export class MessageBuilder {
           verificationStatus: rawData.verificationStatus,
           verifiedBy: this.extractUserInfo(rawData.verifiedBy),
           confidence: rawData.recognitionData?.confidence,
-          isVehicleRegistered: rawData.isVehicleRegistered
+          isVehicleRegistered: rawData.isVehicleRegistered,
+          // Thêm ảnh và video để supervisor có thể xem ngay
+          recognitionData: {
+            confidence: rawData.recognitionData?.confidence,
+            processedImage: rawData.recognitionData?.processedImage,
+            originalImage: rawData.recognitionData?.originalImage,
+            videoUrl: rawData.recognitionData?.videoUrl,
+            video: rawData.recognitionData?.video,
+            boundingBox: rawData.recognitionData?.boundingBox
+          }
         });
         break;
     }
