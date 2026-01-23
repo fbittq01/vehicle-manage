@@ -34,6 +34,15 @@ export const getUsers = asyncHandler(async (req, res) => {
 
     const filter = { ...baseFilter, ...departmentFilter };
 
+    // Fix conflict: baseFilter and departmentFilter both use $or
+    if (baseFilter.$or && departmentFilter.$or) {
+      filter.$and = [
+        { $or: baseFilter.$or },
+        { $or: departmentFilter.$or }
+      ];
+      delete filter.$or;
+    }
+
     // Execute query
     const [users, total] = await Promise.all([
       User.find(filter)
