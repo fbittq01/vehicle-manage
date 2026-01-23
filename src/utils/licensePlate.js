@@ -1,72 +1,121 @@
 // Utility functions để xử lý biển số xe
 
-// Chuẩn hóa biển số xe
+/**
+ * Định nghĩa các loại biển số xe Việt Nam
+ * Mỗi pattern gồm: regex để match, hàm format kết quả
+ */
+const LICENSE_PLATE_PATTERNS = [
+  // === XE ĐẶC BIỆT (prefix chữ) ===
+  {
+    name: 'Xe quân đội',
+    match: /^(QĐ|QD)(\d{4,5})$/,
+    format: (m) => `${m[1]}-${m[2]}`
+  },
+  {
+    name: 'Xe công an',
+    match: /^(CA)(\d{4,5})$/,
+    format: (m) => `${m[1]}-${m[2]}`
+  },
+  {
+    name: 'Xe ngoại giao',
+    match: /^(NG|NN|QT|ĐN|Đ)(\d{4,6})$/,
+    format: (m) => `${m[1]}-${m[2]}`
+  },
+  
+  // === Ô TÔ (6 số cuối, có dấu chấm) ===
+  {
+    name: 'Ô tô mới (2 chữ)',
+    match: /^(\d{2}[A-Z]{2})(\d{4})(\d{2})$/,
+    format: (m) => `${m[1]}-${m[2]}.${m[3]}`
+  },
+  
+  // === XE MÁY (5 số cuối, có dấu chấm) ===
+  {
+    name: 'Xe máy mới (2 chữ)',
+    match: /^(\d{2}[A-Z]{2})(\d{3})(\d{2})$/,
+    format: (m) => `${m[1]}-${m[2]}.${m[3]}`
+  },
+  {
+    name: 'Xe máy mới (1 chữ + 1 số)',
+    match: /^(\d{2}[A-Z]\d)(\d{3})(\d{2})$/,
+    format: (m) => `${m[1]}-${m[2]}.${m[3]}`
+  },
+  {
+    name: 'Ô tô cũ (1 chữ)',
+    match: /^(\d{2}[A-Z])(\d{3})(\d{2})$/,
+    format: (m) => `${m[1]}-${m[2]}.${m[3]}`
+  },
+  
+  // === XE MÁY (4 số cuối, không dấu chấm) ===
+  {
+    name: 'Xe máy (1 chữ + 1 số + 4 số)',
+    match: /^(\d{2}[A-Z]\d)(\d{4})$/,
+    format: (m) => `${m[1]}-${m[2]}`
+  },
+  {
+    name: 'Xe máy cũ (4 số)',
+    match: /^(\d{2}[A-Z])(\d{4})$/,
+    format: (m) => `${m[1]}-${m[2]}`
+  },
+  
+  // === XE TẢI, BUS (5 số cuối, không dấu chấm) ===
+  {
+    name: 'Xe tải/bus',
+    match: /^(\d{2}[A-Z])(\d{5})$/,
+    format: (m) => `${m[1]}-${m[2]}`
+  },
+];
+
+/**
+ * Chuẩn hóa biển số xe Việt Nam
+ */
 export const normalizeLicensePlate = (licensePlate) => {
   if (!licensePlate) return '';
   
-  // Làm sạch input
-  let normalized = licensePlate
+  // Làm sạch input: uppercase, bỏ khoảng trắng và ký tự không hợp lệ
+  const cleanPlate = licensePlate
     .toString()
     .toUpperCase()
     .trim()
-    .replace(/\s+/g, '') // Loại bỏ khoảng trắng
-    .replace(/[^0-9A-Z.-]/g, ''); // Chỉ giữ lại số, chữ, dấu chấm và gạch ngang
+    .replace(/\s+/g, '')
+    .replace(/[^0-9A-ZĐ]/g, '');
   
-  // Nếu đã có định dạng chuẩn thì trả về luôn
-  if (normalized.includes('-') && normalized.includes('.')) {
-    return normalized;
-  }
+  if (!cleanPlate) return '';
   
-  // Loại bỏ dấu gạch ngang và chấm hiện có để format lại
-  const cleanLicensePlate = normalized.replace(/[-.]/, '');
-  
-  // Thêm định dạng cho các loại biển số xe
-  
-  // Ô tô con cũ: 29A12345 -> 29A-123.45
-  if (/^[0-9]{2}[A-Z]{1}[0-9]{5}$/.test(cleanLicensePlate)) {
-    const match = cleanLicensePlate.match(/^([0-9]{2}[A-Z]{1})([0-9]{3})([0-9]{2})$/);
+  // Tìm pattern phù hợp và format
+  for (const pattern of LICENSE_PLATE_PATTERNS) {
+    const match = cleanPlate.match(pattern.match);
     if (match) {
-      return `${match[1]}-${match[2]}.${match[3]}`;
+      return pattern.format(match);
     }
   }
   
-  // Ô tô con mới: 29AB123456 -> 29AB-1234.56
-  if (/^[0-9]{2}[A-Z]{2}[0-9]{6}$/.test(cleanLicensePlate)) {
-    const match = cleanLicensePlate.match(/^([0-9]{2}[A-Z]{2})([0-9]{4})([0-9]{2})$/);
-    if (match) {
-      return `${match[1]}-${match[2]}.${match[3]}`;
-    }
-  }
-  // Nếu không khớp pattern nào thì trả về bản gốc đã làm sạch
-  return normalized;
+  // Fallback: trả về bản gốc đã làm sạch
+  return cleanPlate;
 };
 
-// Validate định dạng biển số xe Việt Nam
+/**
+ * Validate định dạng biển số xe Việt Nam
+ * Sử dụng normalizeLicensePlate và kiểm tra kết quả có khớp pattern hợp lệ không
+ */
 export const validateVietnameseLicensePlate = (licensePlate) => {
   const normalized = normalizeLicensePlate(licensePlate);
   
-  // Các pattern cho biển số xe Việt Nam
-  const patterns = [
-    // Ô tô con cũ: 29A-123.45
-    /^[0-9]{2}[A-Z]{1}-[0-9]{3}\.[0-9]{2}$/,
-    // Ô tô con mới: 29AB-1234.56  
-    /^[0-9]{2}[A-Z]{2}-[0-9]{4}\.[0-9]{2}$/,
-    // Xe máy cũ: 29A1-1234, 29A-1234
-    /^[0-9]{2}[A-Z]{1}[0-9]{1}-[0-9]{4}$/,
-    /^[0-9]{2}[A-Z]{1}-[0-9]{4}$/,
-    // Xe máy mới: 29A11234, 30F91760 (2 số + 1 chữ + 5 số)
-    /^[0-9]{2}[A-Z]{1}[0-9]{5}$/,
-    // Xe máy: 29A1234 (2 số + 1 chữ + 4 số)
-    /^[0-9]{2}[A-Z]{1}[0-9]{4}$/,
-    // Xe tải, container: 29C-12345
-    /^[0-9]{2}[A-Z]{1}-[0-9]{5}$/,
-    // Xe buýt: 29B-12345
-    /^[0-9]{2}[A-Z]{1}-[0-9]{5}$/,
-    // Format có dấu gạch ngang: 29A-123.45
-    /^[0-9]{2}[A-Z]{1,2}-[0-9]{3,5}(\.[0-9]{2})?$/,
+  if (!normalized || normalized.length < 6) return false;
+  
+  // Các pattern validation cho output đã normalize
+  const validPatterns = [
+    // Xe đặc biệt
+    /^(QĐ|QD)-\d{4,5}$/,
+    /^CA-\d{4,5}$/,
+    /^(NG|NN|QT|ĐN|Đ)-\d{4,6}$/,
+    // Ô tô/Xe máy có dấu chấm
+    /^\d{2}[A-Z]{1,2}-\d{3,4}\.\d{2}$/,
+    // Xe máy/Xe tải không dấu chấm
+    /^\d{2}[A-Z]\d?-\d{4,5}$/,
   ];
   
-  return patterns.some(pattern => pattern.test(normalized));
+  return validPatterns.some(pattern => pattern.test(normalized));
 };
 
 // Phân tích thông tin từ biển số xe
@@ -125,27 +174,15 @@ export const generateLicensePlateSuggestions = (input) => {
   return suggestions;
 };
 
-// Format hiển thị biển số xe
+/**
+ * Format hiển thị biển số xe
+ * Sử dụng hàm normalizeLicensePlate để chuẩn hóa, sau đó trả về dạng hiển thị
+ */
 export const formatLicensePlateDisplay = (licensePlate) => {
+  // Sử dụng hàm normalizeLicensePlate đã có
   const normalized = normalizeLicensePlate(licensePlate);
   
-  // Thêm dấu gạch ngang và chấm cho dễ đọc nếu chưa có
-  
-  // Xe máy 5 số: 30F91760 -> 30F-91760
-  if (/^[0-9]{2}[A-Z]{1}[0-9]{5}$/.test(normalized)) {
-    const match = normalized.match(/^([0-9]{2}[A-Z]{1})([0-9]{5})$/);
-    if (match) {
-      return `${match[1]}-${match[2]}`;
-    }
-  }
-  
-  // Xe máy 4 số: 29A1234 -> 29A-1234
-  if (/^[0-9]{2}[A-Z]{1}[0-9]{4}$/.test(normalized)) {
-    const match = normalized.match(/^([0-9]{2}[A-Z]{1})([0-9]{4})$/);
-    if (match) {
-      return `${match[1]}-${match[2]}`;
-    }
-  }
-  
+  // Trả về biển số đã được chuẩn hóa
   return normalized;
 };
+

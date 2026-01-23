@@ -61,15 +61,15 @@ export const getWorkingHoursById = asyncHandler(async (req, res) => {
   sendSuccessResponse(res, { workingHours }, 'Lấy thông tin cài đặt giờ làm việc thành công');
 });
 
-// Lấy cài đặt giờ làm việc đang hoạt động
+// Lấy tất cả cài đặt giờ làm việc đang hoạt động
 export const getActiveWorkingHours = asyncHandler(async (req, res) => {
   const workingHours = await WorkingHours.getActiveWorkingHours();
   
-  if (!workingHours) {
+  if (!workingHours || workingHours.length === 0) {
     return sendErrorResponse(res, 'Chưa có cài đặt giờ làm việc nào được kích hoạt', 404);
   }
   
-  sendSuccessResponse(res, { workingHours }, 'Lấy cài đặt giờ làm việc đang hoạt động thành công');
+  sendSuccessResponse(res, { workingHours }, 'Lấy danh sách cài đặt giờ làm việc đang hoạt động thành công');
 });
 
 // Tạo cài đặt giờ làm việc mới
@@ -95,15 +95,10 @@ export const createWorkingHours = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Định dạng thời gian không hợp lệ (HH:mm)', 400);
   }
   
-  // Validate start time < end time
-  if (startTime >= endTime) {
-    return sendErrorResponse(res, 'Giờ bắt đầu phải nhỏ hơn giờ kết thúc', 400);
-  }
+  // Cho phép overnight shifts (ví dụ: 21:30 - 05:30)
+  // Không validate startTime < endTime nữa
   
-  // Nếu tạo cài đặt mới và muốn active, deactivate tất cả cài đặt cũ
-  if (req.body.isActive === true) {
-    await WorkingHours.updateMany({}, { isActive: false });
-  }
+  // Cho phép nhiều working hours active cùng lúc - không deactivate các cài đặt khác
   
   const workingHours = new WorkingHours({
     name,
@@ -153,10 +148,8 @@ export const updateWorkingHours = asyncHandler(async (req, res) => {
     if (!timeRegex.test(newStartTime) || !timeRegex.test(newEndTime)) {
       return sendErrorResponse(res, 'Định dạng thời gian không hợp lệ (HH:mm)', 400);
     }
-    
-    if (newStartTime >= newEndTime) {
-      return sendErrorResponse(res, 'Giờ bắt đầu phải nhỏ hơn giờ kết thúc', 400);
-    }
+    // Cho phép overnight shifts (ví dụ: 21:30 - 05:30)
+    // Không validate startTime < endTime nữa
   }
   
   // Validate working days if provided
@@ -166,10 +159,7 @@ export const updateWorkingHours = asyncHandler(async (req, res) => {
     }
   }
   
-  // Nếu active cài đặt này, deactivate tất cả cài đặt khác
-  if (isActive === true && !workingHours.isActive) {
-    await WorkingHours.updateMany({ _id: { $ne: id } }, { isActive: false });
-  }
+  // Cho phép nhiều working hours active cùng lúc - không deactivate các cài đặt khác
   
   // Update fields
   const updateData = {};
@@ -223,8 +213,7 @@ export const activateWorkingHours = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Cài đặt giờ làm việc đã được kích hoạt', 400);
   }
   
-  // Deactivate tất cả cài đặt khác
-  await WorkingHours.updateMany({}, { isActive: false });
+  // Cho phép nhiều working hours active cùng lúc - không deactivate các cài đặt khác
   
   // Activate cài đặt hiện tại
   workingHours.isActive = true;
@@ -236,7 +225,7 @@ export const activateWorkingHours = asyncHandler(async (req, res) => {
   sendSuccessResponse(res, { workingHours: populatedWorkingHours }, 'Kích hoạt cài đặt giờ làm việc thành công');
 });
 
-// Kiểm tra thời gian có phải giờ làm việc không
+// Kiểm tra thời gian có phải giờ làm việc không (với nhiều working hours)
 export const checkWorkingTime = asyncHandler(async (req, res) => {
   const { dateTime } = req.query;
   
@@ -244,21 +233,29 @@ export const checkWorkingTime = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Vui lòng cung cấp dateTime', 400);
   }
   
-  const workingHours = await WorkingHours.getActiveWorkingHours();
-  if (!workingHours) {
+  const workingHoursList = await WorkingHours.getActiveWorkingHours();
+  if (!workingHoursList || workingHoursList.length === 0) {
     return sendErrorResponse(res, 'Chưa có cài đặt giờ làm việc nào được kích hoạt', 404);
   }
   
-  const result = workingHours.isWorkingTime(dateTime);
+  // Kiểm tra với tất cả working hours active
+  const results = workingHoursList.map(wh => ({
+    workingHours: {
+      id: wh._id,
+      name: wh.name,
+      startTime: wh.startTime,
+      endTime: wh.endTime,
+      workingDays: wh.workingDays
+    },
+    result: wh.isWorkingTime(dateTime)
+  }));
+  
+  // Tìm xem có working hours nào match không
+  const isWorkingInAnySchedule = results.some(r => r.result.isWorking);
   
   sendSuccessResponse(res, {
     dateTime: new Date(dateTime),
-    workingHours: {
-      name: workingHours.name,
-      startTime: workingHours.startTime,
-      endTime: workingHours.endTime,
-      workingDays: workingHours.workingDays
-    },
-    result
+    isWorkingInAnySchedule,
+    results
   }, 'Kiểm tra giờ làm việc thành công');
 });
