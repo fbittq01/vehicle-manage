@@ -6,6 +6,7 @@ import { asyncHandler } from '../middleware/logger.js';
 import { processRecognitionImages } from '../utils/fileStorage.js';
 import { checkAndApplyRequest } from './workingHoursRequestController.js';
 import { createDepartmentFilter, checkResourceAccess } from '../utils/departmentFilter.js';
+import { findRelevantWorkingHour, checkViolationWithShift } from '../utils/findRelevantWorkingHour.js';
 
 // Import socketService instance (sẽ được inject từ server.js)
 let socketServiceInstance = null;
@@ -726,9 +727,9 @@ export const getWorkingHoursStats = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Thời gian bắt đầu phải nhỏ hơn thời gian kết thúc', 400);
   }
 
-  // Lấy cài đặt giờ làm việc active
-  const workingHours = await WorkingHours.getActiveWorkingHours();
-  if (!workingHours) {
+  // Lấy tất cả cài đặt giờ làm việc active
+  const workingHoursList = await WorkingHours.getActiveWorkingHours();
+  if (!workingHoursList || workingHoursList.length === 0) {
     return sendErrorResponse(res, 'Chưa có cài đặt giờ làm việc nào được kích hoạt', 404);
   }
 
@@ -772,31 +773,11 @@ export const getWorkingHoursStats = asyncHandler(async (req, res) => {
       timeStr: log.createdAt.toTimeString().substring(0, 5)
     };
 
-    // Kiểm tra có phải ngày làm việc không
-    const workingTimeCheck = workingHours.isWorkingTime(log.createdAt);
-    analysis.workingTimeCheck = workingTimeCheck;
-
-    // Kiểm tra có yêu cầu đăng ký được phê duyệt không
-    const hasApprovedRequest = log.metadata?.workingHoursRequest?.requestId;
-    analysis.hasApprovedRequest = !!hasApprovedRequest;
-    if (hasApprovedRequest) {
-      analysis.approvedRequestInfo = log.metadata.workingHoursRequest;
-    }
-
-    if (log.action === 'entry') {
-      const lateCheck = workingHours.isLate(log.createdAt);
-      analysis.lateCheck = lateCheck;
-      // Nếu có yêu cầu được phê duyệt, không tính là vi phạm
-      analysis.status = (lateCheck.isLate && !hasApprovedRequest) ? 'late' : 'ontime';
-      analysis.isViolation = lateCheck.isLate && !hasApprovedRequest;
-    } else if (log.action === 'exit') {
-      const earlyCheck = workingHours.isEarly(log.createdAt);
-      analysis.earlyCheck = earlyCheck;
-      // Nếu có yêu cầu được phê duyệt, không tính là vi phạm
-      analysis.status = (earlyCheck.isEarly && !hasApprovedRequest) ? 'early' : 'ontime';
-      analysis.isViolation = earlyCheck.isEarly && !hasApprovedRequest;
-    }
-
+    // Sử dụng shift-based logic - xác định ca làm việc cụ thể
+    const violationCheck = checkViolationWithShift(log, workingHoursList);
+    
+    Object.assign(analysis, violationCheck);
+    
     analysisResults.push(analysis);
 
     // Tổng hợp thống kê theo ngày
@@ -841,14 +822,15 @@ export const getWorkingHoursStats = asyncHandler(async (req, res) => {
   const summary = {
     totalLogs: logs.length,
     dateRange: { start: startDate, end: endDate },
-    workingHoursConfig: {
-      name: workingHours.name,
-      startTime: workingHours.startTime,
-      endTime: workingHours.endTime,
-      workingDays: workingHours.workingDays,
-      lateToleranceMinutes: workingHours.lateToleranceMinutes,
-      earlyToleranceMinutes: workingHours.earlyToleranceMinutes
-    },
+    workingHoursConfigs: workingHoursList.map(wh => ({
+      id: wh._id,
+      name: wh.name,
+      startTime: wh.startTime,
+      endTime: wh.endTime,
+      workingDays: wh.workingDays,
+      lateToleranceMinutes: wh.lateToleranceMinutes,
+      earlyToleranceMinutes: wh.earlyToleranceMinutes
+    })),
     entries: {
       total: analysisResults.filter(r => r.action === 'entry').length,
       ontime: analysisResults.filter(r => r.action === 'entry' && r.status === 'ontime').length,
@@ -895,9 +877,9 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
   const start = getStartOfDay(startDate);
   const end = getEndOfDay(endDate);
 
-  // Lấy cài đặt giờ làm việc active
-  const workingHours = await WorkingHours.getActiveWorkingHours();
-  if (!workingHours) {
+  // Lấy tất cả cài đặt giờ làm việc active
+  const workingHoursList = await WorkingHours.getActiveWorkingHours();
+  if (!workingHoursList || workingHoursList.length === 0) {
     return sendErrorResponse(res, 'Chưa có cài đặt giờ làm việc nào được kích hoạt', 404);
   }
 
@@ -933,48 +915,43 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
       };
     }
 
-    if (log.action === 'entry') {
-      const lateCheck = workingHours.isLate(log.createdAt);
-      // Chỉ tính vi phạm nếu muộn giờ và không có yêu cầu đăng ký được phê duyệt
-      const hasApprovedRequest = log.metadata?.workingHoursRequest?.requestId;
-      if (lateCheck.isLate && !hasApprovedRequest) {
-        userViolations[userId].lateEntries.push({
-          logId: log._id,
-          date: log.createdAt.toISOString().split('T')[0],
-          time: log.createdAt.toTimeString().substring(0, 5),
-          lateMinutes: lateCheck.lateMinutes,
-          licensePlate: log.licensePlate,
-          evidenceImages: {
-            processedImage: log.recognitionData?.processedImage || null,
-            originalImage: log.recognitionData?.originalImage || null
-          },
-          videoUrl: log.recognitionData?.videoUrl || null,
-          gateName: log.gateName,
-          confidence: log.recognitionData?.confidence
-        });
-        userViolations[userId].totalViolations++;
-      }
-    } else if (log.action === 'exit') {
-      const earlyCheck = workingHours.isEarly(log.createdAt);
-      // Chỉ tính vi phạm nếu về sớm và không có yêu cầu đăng ký được phê duyệt
-      const hasApprovedRequest = log.metadata?.workingHoursRequest?.requestId;
-      if (earlyCheck.isEarly && !hasApprovedRequest) {
-        userViolations[userId].earlyExits.push({
-          logId: log._id,
-          date: log.createdAt.toISOString().split('T')[0],
-          time: log.createdAt.toTimeString().substring(0, 5),
-          earlyMinutes: earlyCheck.earlyMinutes,
-          licensePlate: log.licensePlate,
-          evidenceImages: {
-            processedImage: log.recognitionData?.processedImage || null,
-            originalImage: log.recognitionData?.originalImage || null
-          },
-          videoUrl: log.recognitionData?.videoUrl || null,
-          gateName: log.gateName,
-          confidence: log.recognitionData?.confidence
-        });
-        userViolations[userId].totalViolations++;
-      }
+    // Sử dụng shift-based logic
+    const violationCheck = checkViolationWithShift(log, workingHoursList);
+
+    if (log.action === 'entry' && violationCheck.isViolation && violationCheck.status === 'late') {
+      userViolations[userId].lateEntries.push({
+        logId: log._id,
+        date: log.createdAt.toISOString().split('T')[0],
+        time: log.createdAt.toTimeString().substring(0, 5),
+        lateMinutes: violationCheck.violationMinutes,
+        licensePlate: log.licensePlate,
+        workingHour: violationCheck.relevantWorkingHour,
+        evidenceImages: {
+          processedImage: log.recognitionData?.processedImage || null,
+          originalImage: log.recognitionData?.originalImage || null
+        },
+        videoUrl: log.recognitionData?.videoUrl || null,
+        gateName: log.gateName,
+        confidence: log.recognitionData?.confidence
+      });
+      userViolations[userId].totalViolations++;
+    } else if (log.action === 'exit' && violationCheck.isViolation && violationCheck.status === 'early') {
+      userViolations[userId].earlyExits.push({
+        logId: log._id,
+        date: log.createdAt.toISOString().split('T')[0],
+        time: log.createdAt.toTimeString().substring(0, 5),
+        earlyMinutes: violationCheck.violationMinutes,
+        licensePlate: log.licensePlate,
+        workingHour: violationCheck.relevantWorkingHour,
+        evidenceImages: {
+          processedImage: log.recognitionData?.processedImage || null,
+          originalImage: log.recognitionData?.originalImage || null
+        },
+        videoUrl: log.recognitionData?.videoUrl || null,
+        gateName: log.gateName,
+        confidence: log.recognitionData?.confidence
+      });
+      userViolations[userId].totalViolations++;
     }
   });
 
@@ -998,13 +975,14 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
   const summary = {
     dateRange: { start: startDate, end: endDate },
     violationType,
-    workingHoursConfig: {
-      name: workingHours.name,
-      startTime: workingHours.startTime,
-      endTime: workingHours.endTime,
-      lateToleranceMinutes: workingHours.lateToleranceMinutes,
-      earlyToleranceMinutes: workingHours.earlyToleranceMinutes
-    },
+    workingHoursConfigs: workingHoursList.map(wh => ({
+      id: wh._id,
+      name: wh.name,
+      startTime: wh.startTime,
+      endTime: wh.endTime,
+      lateToleranceMinutes: wh.lateToleranceMinutes,
+      earlyToleranceMinutes: wh.earlyToleranceMinutes
+    })),
     totalUsersWithViolations: filteredUsers.length,
     totalLateEntries: filteredUsers.reduce((sum, user) => sum + user.lateEntries.length, 0),
     totalEarlyExits: filteredUsers.reduce((sum, user) => sum + user.earlyExits.length, 0),
@@ -1040,9 +1018,9 @@ export const getUserWorkingHoursReport = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Không tìm thấy người dùng', 404);
   }
 
-  // Lấy cài đặt giờ làm việc active
-  const workingHours = await WorkingHours.getActiveWorkingHours();
-  if (!workingHours) {
+  // Lấy tất cả cài đặt giờ làm việc active
+  const workingHoursList = await WorkingHours.getActiveWorkingHours();
+  if (!workingHoursList || workingHoursList.length === 0) {
     return sendErrorResponse(res, 'Chưa có cài đặt giờ làm việc nào được kích hoạt', 404);
   }
 
@@ -1061,10 +1039,13 @@ export const getUserWorkingHoursReport = asyncHandler(async (req, res) => {
     const dateKey = log.createdAt.toISOString().split('T')[0];
     
     if (!dailyReport[dateKey]) {
+      // Kiểm tra xem ngày này có phải working day trong BẤT KỲ working hours nào không
+      const isWorkingDayInAny = workingHoursList.some(wh => wh.workingDays.includes(log.createdAt.getDay()));
+      
       dailyReport[dateKey] = {
         date: dateKey,
         dayOfWeek: log.createdAt.getDay(),
-        isWorkingDay: workingHours.workingDays.includes(log.createdAt.getDay()),
+        isWorkingDay: isWorkingDayInAny,
         entries: [],
         exits: [],
         violations: []
@@ -1072,50 +1053,56 @@ export const getUserWorkingHoursReport = asyncHandler(async (req, res) => {
     }
 
     const timeStr = log.createdAt.toTimeString().substring(0, 5);
-    const hasApprovedRequest = log.metadata?.workingHoursRequest?.requestId;
+    
+    // Sử dụng shift-based logic
+    const violationCheck = checkViolationWithShift(log, workingHoursList);
 
     if (log.action === 'entry') {
-      const lateCheck = workingHours.isLate(log.createdAt);
       const entry = {
         time: timeStr,
         licensePlate: log.licensePlate,
         vehicle: log.vehicle,
-        isLate: lateCheck.isLate,
-        lateMinutes: lateCheck.lateMinutes || 0,
-        hasApprovedRequest: !!hasApprovedRequest,
-        requestInfo: hasApprovedRequest ? log.metadata.workingHoursRequest : null
+        isLate: violationCheck.status === 'late',
+        lateMinutes: violationCheck.violationMinutes || 0,
+        hasApprovedRequest: !!log.metadata?.workingHoursRequest?.requestId,
+        requestInfo: log.metadata?.workingHoursRequest || null,
+        workingHour: violationCheck.relevantWorkingHour,
+        status: violationCheck.status
       };
       dailyReport[dateKey].entries.push(entry);
 
-      // Chỉ tính vi phạm nếu muộn giờ và không có yêu cầu đăng ký được phê duyệt
-      if (lateCheck.isLate && !hasApprovedRequest) {
+      // Tính vi phạm
+      if (violationCheck.isViolation && violationCheck.status === 'late') {
         dailyReport[dateKey].violations.push({
           type: 'late_entry',
           time: timeStr,
-          minutes: lateCheck.lateMinutes,
-          licensePlate: log.licensePlate
+          minutes: violationCheck.violationMinutes,
+          licensePlate: log.licensePlate,
+          workingHour: violationCheck.relevantWorkingHour
         });
       }
     } else if (log.action === 'exit') {
-      const earlyCheck = workingHours.isEarly(log.createdAt);
       const exit = {
         time: timeStr,
         licensePlate: log.licensePlate,
         vehicle: log.vehicle,
-        isEarly: earlyCheck.isEarly,
-        earlyMinutes: earlyCheck.earlyMinutes || 0,
-        hasApprovedRequest: !!hasApprovedRequest,
-        requestInfo: hasApprovedRequest ? log.metadata.workingHoursRequest : null
+        isEarly: violationCheck.status === 'early',
+        earlyMinutes: violationCheck.violationMinutes || 0,
+        hasApprovedRequest: !!log.metadata?.workingHoursRequest?.requestId,
+        requestInfo: log.metadata?.workingHoursRequest || null,
+        workingHour: violationCheck.relevantWorkingHour,
+        status: violationCheck.status
       };
       dailyReport[dateKey].exits.push(exit);
 
-      // Chỉ tính vi phạm nếu về sớm và không có yêu cầu đăng ký được phê duyệt
-      if (earlyCheck.isEarly && !hasApprovedRequest) {
+      // Tính vi phạm
+      if (violationCheck.isViolation && violationCheck.status === 'early') {
         dailyReport[dateKey].violations.push({
           type: 'early_exit',
           time: timeStr,
-          minutes: earlyCheck.earlyMinutes,
-          licensePlate: log.licensePlate
+          minutes: violationCheck.violationMinutes,
+          licensePlate: log.licensePlate,
+          workingHour: violationCheck.relevantWorkingHour
         });
       }
     }

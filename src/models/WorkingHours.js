@@ -170,9 +170,9 @@ workingHoursSchema.methods.isEarly = function(exitTime) {
   };
 };
 
-// Static method lấy cài đặt giờ làm việc active
+// Static method lấy tất cả cài đặt giờ làm việc active (cho phép nhiều cùng lúc)
 workingHoursSchema.statics.getActiveWorkingHours = function() {
-  return this.findOne({ isActive: true }).populate('createdBy', 'name username');
+  return this.find({ isActive: true }).populate('createdBy', 'name username');
 };
 
 export default mongoose.model('WorkingHours', workingHoursSchema);
