@@ -226,7 +226,8 @@ export class MessageBuilder {
           status: rawData.status,
           requestedBy: this.extractUserInfo(rawData.requestedBy),
           approvedBy: this.extractUserInfo(rawData.approvedBy),
-          plannedDateTime: rawData.plannedDateTime,
+          plannedEntryTime: rawData.plannedEntryTime,
+          plannedExitTime: rawData.plannedExitTime,
           reason: rawData.reason
         });
         break;
