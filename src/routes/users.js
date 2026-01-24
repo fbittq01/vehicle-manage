@@ -29,9 +29,9 @@ router.use(authenticateToken);
 // Admin routes (supervisor có quyền read-only)
 router.get('/', requireSupervisor, activityMiddleware('VIEW_USER', 'users'), getUsers);
 router.get('/stats', requireAdmin, activityMiddleware('VIEW_ANALYTICS', 'users'), getUserStats);
-router.get('/:id', requireSupervisor, activityMiddleware('VIEW_USER', 'users'), getUserById);
+router.get('/:id', activityMiddleware('VIEW_USER', 'users'), getUserById);
 router.post('/', requireAdmin, validateRegister, activityMiddleware('CREATE_USER', 'users'), createUser);
-router.put('/:id', requireAdmin, validateUpdateUser, activityMiddleware('UPDATE_USER', 'users'), updateUser);
+router.put('/:id', validateUpdateUser, activityMiddleware('UPDATE_USER', 'users'), updateUser);
 router.delete('/:id', requireAdmin, activityMiddleware('DELETE_USER', 'users'), deleteUser);
 router.put('/:id/activate', requireAdmin, activityMiddleware('ACTIVATE_USER', 'users'), activateUser);
 router.put('/:id/reset-password', requireSuperAdmin, activityMiddleware('RESET_PASSWORD', 'users'), resetUserPassword);
