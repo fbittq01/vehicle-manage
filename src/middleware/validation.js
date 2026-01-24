@@ -684,28 +684,36 @@ export const workingHoursRequestSchema = Joi.object({
       'any.required': 'Loại yêu cầu là bắt buộc'
     }),
   
-  plannedDateTime: Joi.date()
+  plannedEntryTime: Joi.date()
     .greater('now')
-    .required()
-    .messages({
-      'date.greater': 'Thời gian dự kiến phải lớn hơn thời gian hiện tại',
-      'any.required': 'Thời gian dự kiến là bắt buộc'
-    }),
-  
-  plannedEndDateTime: Joi.date()
-    .greater(Joi.ref('plannedDateTime'))
     .when('requestType', {
-      is: 'both',
+      is: Joi.valid('entry', 'both'),
       then: Joi.required(),
       otherwise: Joi.optional()
     })
     .messages({
-      'date.greater': 'Thời gian kết thúc phải lớn hơn thời gian bắt đầu',
-      'any.required': 'Thời gian kết thúc là bắt buộc khi loại yêu cầu là both'
+      'date.greater': 'Thời gian vào phải lớn hơn thời gian hiện tại',
+      'any.required': 'Thời gian vào là bắt buộc khi loại yêu cầu là entry hoặc both'
+    }),
+  
+  plannedExitTime: Joi.date()
+    .when('requestType', {
+      is: 'both',
+      then: Joi.date().greater(Joi.ref('plannedEntryTime')).required(),
+      otherwise: Joi.optional()
+    })
+    .when('requestType', {
+      is: 'exit',
+      then: Joi.date().greater('now').required(),
+      otherwise: Joi.optional()
+    })
+    .messages({
+      'date.greater': 'Thời gian ra không hợp lệ (phải lớn hơn thời gian vào hoặc hiện tại)',
+      'any.required': 'Thời gian ra là bắt buộc khi loại yêu cầu là exit hoặc both'
     }),
   
   licensePlate: Joi.string()
-    .pattern(/^[0-9]{2}[A-Z]{1,2}-[0-9]{3,4}\.[0-9]{2}$|^[0-9]{2}[A-Z]{1,2}[0-9]{3,4}$/)
+    .pattern(/^[0-9]{2}[A-Z]{1,2}-[0-9]{3,4}\.[0-9]{2}$|^[0-9]{2}[A-Z]{1,2}[0-9]{3,5}$/)
     .required()
     .messages({
       'string.pattern.base': 'Biển số xe không đúng định dạng (VD: 30A-123.45)',
@@ -744,27 +752,21 @@ export const updateWorkingHoursRequestSchema = Joi.object({
       'any.only': 'Loại yêu cầu phải là entry, exit hoặc both'
     }),
   
-  plannedDateTime: Joi.date()
+  plannedEntryTime: Joi.date()
     .greater('now')
     .optional()
     .messages({
-      'date.greater': 'Thời gian dự kiến phải lớn hơn thời gian hiện tại'
+      'date.greater': 'Thời gian vào phải lớn hơn thời gian hiện tại'
     }),
   
-  plannedEndDateTime: Joi.date()
-    .greater(Joi.ref('plannedDateTime'))
-    .when('requestType', {
-      is: 'both',
-      then: Joi.optional(),
-      otherwise: Joi.optional()
-    })
+  plannedExitTime: Joi.date()
     .optional()
     .messages({
-      'date.greater': 'Thời gian kết thúc phải lớn hơn thời gian bắt đầu'
+      'date.greater': 'Thời gian ra phải lớn hơn thời gian vào'
     }),
   
   licensePlate: Joi.string()
-    .pattern(/^[0-9]{2}[A-Z]{1,2}-[0-9]{3,4}\.[0-9]{2}$|^[0-9]{2}[A-Z]{1,2}[0-9]{3,4}$/)
+    .pattern(/^[0-9]{2}[A-Z]{1,2}-[0-9]{3,4}\.[0-9]{2}$|^[0-9]{2}[A-Z]{1,2}[0-9]{3,5}$/)
     .optional()
     .messages({
       'string.pattern.base': 'Biển số xe không đúng định dạng (VD: 30A-123.45)'

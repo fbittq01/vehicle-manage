@@ -244,7 +244,7 @@ const createMockData = (type, userId) => {
       },
       requestType: 'entry',
       licensePlate: '29A-12345',
-      plannedDateTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 giờ nữa
+      plannedEntryTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 giờ nữa
       reason: 'Có việc cần xử lý khẩn cấp tại công ty',
       status: 'pending',
       createdAt: new Date()
@@ -259,7 +259,7 @@ const createMockData = (type, userId) => {
       },
       requestType: 'exit',
       licensePlate: '30B-67890',
-      plannedDateTime: new Date(),
+      plannedExitTime: new Date(),
       reason: 'Đi công tác ngoài giờ',
       status: 'approved',
       approvedBy: {

@@ -19,25 +19,38 @@ const workingHoursRequestSchema = new mongoose.Schema({
     required: [true, 'Loại yêu cầu là bắt buộc']
   },
   
-  // Thời gian dự kiến ra/vào
-  plannedDateTime: {
-    type: Date,
-    required: [true, 'Thời gian dự kiến là bắt buộc'],
-    index: true
-  },
-  
-  // Thời gian dự kiến kết thúc (đối với trường hợp both)
-  plannedEndDateTime: {
+  // Thời gian dự kiến VÀO
+  plannedEntryTime: {
     type: Date,
     validate: {
-      validator: function(endDate) {
-        // Chỉ validate khi requestType là 'both'
-        if (this.requestType === 'both') {
-          return endDate && endDate > this.plannedDateTime;
+      validator: function(entryTime) {
+        // entry và both phải có plannedEntryTime
+        if (this.requestType === 'entry' || this.requestType === 'both') {
+          return !!entryTime;
         }
         return true;
       },
-      message: 'Thời gian kết thúc phải lớn hơn thời gian bắt đầu'
+      message: 'Thời gian vào là bắt buộc khi loại yêu cầu là entry hoặc both'
+    },
+    index: true
+  },
+  
+  // Thời gian dự kiến RA
+  plannedExitTime: {
+    type: Date,
+    validate: {
+      validator: function(exitTime) {
+        // exit và both phải có plannedExitTime
+        if (this.requestType === 'exit' || this.requestType === 'both') {
+          return !!exitTime;
+        }
+        // Nếu có cả entry và exit, exit phải > entry
+        if (exitTime && this.plannedEntryTime) {
+          return exitTime > this.plannedEntryTime;
+        }
+        return true;
+      },
+      message: 'Thời gian ra không hợp lệ'
     }
   },
   
@@ -94,7 +107,7 @@ const workingHoursRequestSchema = new mongoose.Schema({
     ref: 'AccessLog'
   }],
   
-  // Thời gian hiệu lực (được tính dựa trên plannedDateTime hoặc plannedEndDateTime)
+  // Thời gian hiệu lực (được tính dựa trên plannedEntryTime hoặc plannedExitTime)
   validUntil: {
     type: Date
   },
@@ -118,7 +131,8 @@ const workingHoursRequestSchema = new mongoose.Schema({
 
 // Indexes để tối ưu query
 workingHoursRequestSchema.index({ requestedBy: 1, status: 1 });
-workingHoursRequestSchema.index({ plannedDateTime: 1, status: 1 });
+workingHoursRequestSchema.index({ plannedEntryTime: 1, status: 1 });
+workingHoursRequestSchema.index({ plannedExitTime: 1, status: 1 });
 workingHoursRequestSchema.index({ licensePlate: 1, status: 1 });
 workingHoursRequestSchema.index({ createdAt: -1 });
 
@@ -156,16 +170,16 @@ workingHoursRequestSchema.methods.canApplyToAccessLog = function(accessLog) {
   // Kiểm tra thời gian (trong vòng ±30 phút so với thời gian dự kiến)
   const tolerance = 30 * 60 * 1000; // 30 phút
   const logTime = new Date(accessLog.createdAt);
-  const plannedTime = new Date(this.plannedDateTime);
   
-  const timeDiff = Math.abs(logTime - plannedTime);
+  // Xác định thời gian cần check dựa vào action
+  // entry -> check plannedEntryTime, exit -> check plannedExitTime
+  const plannedTime = accessLog.action === 'entry' 
+    ? this.plannedEntryTime 
+    : this.plannedExitTime;
   
-  if (this.requestType === 'both' && this.plannedEndDateTime) {
-    const plannedEndTime = new Date(this.plannedEndDateTime);
-    const endTimeDiff = Math.abs(logTime - plannedEndTime);
-    return timeDiff <= tolerance || endTimeDiff <= tolerance;
-  }
+  if (!plannedTime) return false;
   
+  const timeDiff = Math.abs(logTime - new Date(plannedTime));
   return timeDiff <= tolerance;
 };
 
@@ -178,27 +192,26 @@ workingHoursRequestSchema.methods.markAsUsed = function(accessLogId) {
 
 // Static method tìm yêu cầu có thể áp dụng cho access log
 workingHoursRequestSchema.statics.findApplicableRequest = function(accessLog) {
-  const tolerance = 60 * 60 * 1000; // 30 phút
+  const tolerance = 30 * 60 * 1000; // 30 phút
   const logTime = new Date(accessLog.createdAt);
-  const startTime = new Date(logTime.getTime() - tolerance);
-  const endTime = new Date(logTime.getTime() + tolerance);
+  const minTime = new Date(logTime.getTime() - tolerance);
+  const maxTime = new Date(logTime.getTime() + tolerance);
+  
+  // Xác định trường thời gian cần check dựa vào action của access log
+  // entry -> so sánh với plannedEntryTime
+  // exit -> so sánh với plannedExitTime
+  const timeField = accessLog.action === 'entry' 
+    ? 'plannedEntryTime' 
+    : 'plannedExitTime';
   
   return this.findOne({
     licensePlate: accessLog.licensePlate,
     status: 'approved',
-    $or: [
-      {
-        requestType: accessLog.action,
-        plannedDateTime: { $gte: startTime, $lte: endTime }
-      },
-      {
-        requestType: 'both',
-        $or: [
-          { plannedDateTime: { $gte: startTime, $lte: endTime } },
-          { plannedEndDateTime: { $gte: startTime, $lte: endTime } }
-        ]
-      }
-    ],
+    // Yêu cầu phải phù hợp với action (entry/exit) hoặc là 'both'
+    requestType: { $in: [accessLog.action, 'both'] },
+    // Thời gian tương ứng phải nằm trong khoảng tolerance (logTime ± 30 phút)
+    [timeField]: { $gte: minTime, $lte: maxTime },
+    // Còn hiệu lực
     $or: [
       { validUntil: { $gte: new Date() } },
       { validUntil: null }
@@ -222,12 +235,11 @@ workingHoursRequestSchema.pre('save', function(next) {
   // Tự động set validUntil khi được approve
   if (this.isModified('status') && this.status === 'approved' && !this.validUntil) {
     // Xác định thời gian hết hạn dựa trên loại yêu cầu
-    if (this.requestType === 'both' && this.plannedEndDateTime) {
-      // Nếu là yêu cầu both và có plannedEndDateTime, dùng plannedEndDateTime
-      this.validUntil = new Date(this.plannedEndDateTime);
-    } else {
-      // Các trường hợp khác dùng plannedDateTime
-      this.validUntil = new Date(this.plannedDateTime);
+    // Ưu tiên plannedExitTime nếu có, vì đó là thời điểm cuối cùng cần xét
+    if (this.plannedExitTime) {
+      this.validUntil = new Date(this.plannedExitTime);
+    } else if (this.plannedEntryTime) {
+      this.validUntil = new Date(this.plannedEntryTime);
     }
     this.approvedAt = new Date();
   }

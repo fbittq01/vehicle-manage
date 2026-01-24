@@ -32,9 +32,9 @@ export const getWorkingHoursRequests = asyncHandler(async (req, res) => {
   if (requestedBy) filter.requestedBy = requestedBy;
   
   if (startDate || endDate) {
-    filter.plannedDateTime = {};
-    if (startDate) filter.plannedDateTime.$gte = getStartOfDay(startDate);
-    if (endDate) filter.plannedDateTime.$lte = getEndOfDay(endDate);
+    filter.plannedEntryTime = {};
+    if (startDate) filter.plannedEntryTime.$gte = getStartOfDay(startDate);
+    if (endDate) filter.plannedEntryTime.$lte = getEndOfDay(endDate);
   }
 
   const [requests, total] = await Promise.all([
@@ -74,9 +74,9 @@ export const getMyRequests = asyncHandler(async (req, res) => {
   if (licensePlate) filter.licensePlate = normalizeLicensePlate(licensePlate);
   
   if (startDate || endDate) {
-    filter.plannedDateTime = {};
-    if (startDate) filter.plannedDateTime.$gte = getStartOfDay(startDate);
-    if (endDate) filter.plannedDateTime.$lte = getEndOfDay(endDate);
+    filter.plannedEntryTime = {};
+    if (startDate) filter.plannedEntryTime.$gte = getStartOfDay(startDate);
+    if (endDate) filter.plannedEntryTime.$lte = getEndOfDay(endDate);
   }
 
   const [requests, total] = await Promise.all([
@@ -120,8 +120,8 @@ export const getWorkingHoursRequestById = asyncHandler(async (req, res) => {
 export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
   const {
     requestType,
-    plannedDateTime,
-    plannedEndDateTime,
+    plannedEntryTime,
+    plannedExitTime,
     licensePlate,
     reason,
     metadata,
@@ -170,23 +170,53 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, errorMessage, 403);
   }
 
-  // Validate thời gian
-  const plannedTime = new Date(plannedDateTime);
+  // Validate thời gian dựa trên requestType
+  let entryTime = plannedEntryTime ? new Date(plannedEntryTime) : null;
+  let exitTime = plannedExitTime ? new Date(plannedExitTime) : null;
   const now = new Date();
   
-  if (plannedTime <= now) {
-    return sendErrorResponse(res, 'Thời gian dự kiến phải lớn hơn thời gian hiện tại', 400);
+  // Validate theo requestType
+  if (requestType === 'entry' && !entryTime) {
+    return sendErrorResponse(res, 'Thời gian vào là bắt buộc khi loại yêu cầu là entry', 400);
+  }
+  if (requestType === 'exit' && !exitTime) {
+    return sendErrorResponse(res, 'Thời gian ra là bắt buộc khi loại yêu cầu là exit', 400);
+  }
+  if (requestType === 'both' && (!entryTime || !exitTime)) {
+    return sendErrorResponse(res, 'Thời gian vào và ra đều bắt buộc khi loại yêu cầu là both', 400);
+  }
+  
+  // Validate thời gian phải lớn hơn hiện tại
+  if (entryTime && entryTime <= now) {
+    return sendErrorResponse(res, 'Thời gian vào phải lớn hơn thời gian hiện tại', 400);
+  }
+  if (exitTime && exitTime <= now) {
+    return sendErrorResponse(res, 'Thời gian ra phải lớn hơn thời gian hiện tại', 400);
+  }
+  if (entryTime && exitTime && exitTime <= entryTime) {
+    return sendErrorResponse(res, 'Thời gian ra phải lớn hơn thời gian vào', 400);
   }
   
   // Kiểm tra không có yêu cầu trùng lặp trong cùng khoảng thời gian
+  const checkTime = entryTime || exitTime;
   const existingRequest = await WorkingHoursRequest.findOne({
     requestedBy: targetUserId,
     licensePlate: normalizedPlate,
     status: { $in: ['pending', 'approved'] },
-    plannedDateTime: {
-      $gte: new Date(plannedTime.getTime() - 2 * 60 * 60 * 1000), // 2 giờ trước
-      $lte: new Date(plannedTime.getTime() + 2 * 60 * 60 * 1000)  // 2 giờ sau
-    }
+    $or: [
+      entryTime ? {
+        plannedEntryTime: {
+          $gte: new Date(checkTime.getTime() - 60 * 60 * 1000),
+          $lte: new Date(checkTime.getTime() + 60 * 60 * 1000)
+        }
+      } : null,
+      exitTime ? {
+        plannedExitTime: {
+          $gte: new Date(checkTime.getTime() - 60 * 60 * 1000),
+          $lte: new Date(checkTime.getTime() + 60 * 60 * 1000)
+        }
+      } : null
+    ].filter(Boolean)
   });
 
   if (existingRequest) {
@@ -196,19 +226,22 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
   const requestData = {
     requestedBy: targetUserId,
     requestType,
-    plannedDateTime: plannedTime,
     licensePlate: normalizedPlate,
     reason: reason.trim(),
     metadata: {
       department: targetUser.department?._id,
       phoneNumber: targetUser.phone,
-      createdBy: req.user._id, // Ghi lại ai là người tạo request
+      createdBy: req.user._id,
       ...metadata
     }
   };
 
-  if (requestType === 'both' && plannedEndDateTime) {
-    requestData.plannedEndDateTime = new Date(plannedEndDateTime);
+  // Thêm thời gian tương ứng với requestType
+  if (entryTime) {
+    requestData.plannedEntryTime = entryTime;
+  }
+  if (exitTime) {
+    requestData.plannedExitTime = exitTime;
   }
 
   const request = new WorkingHoursRequest(requestData);
@@ -257,7 +290,7 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
 // Cập nhật yêu cầu (chỉ cho user tự cập nhật yêu cầu pending của mình)
 export const updateWorkingHoursRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { requestType, plannedDateTime, plannedEndDateTime, licensePlate, reason, metadata } = req.body;
+  const { requestType, plannedEntryTime, plannedExitTime, licensePlate, reason, metadata } = req.body;
 
   const request = await WorkingHoursRequest.findById(id);
   
@@ -286,23 +319,6 @@ export const updateWorkingHoursRequest = asyncHandler(async (req, res) => {
       return sendErrorResponse(res, 'Bạn không có quyền sử dụng biển số xe này', 403);
     }
 
-    // Kiểm tra không có yêu cầu trùng lặp trong cùng khoảng thời gian với biển số mới
-    const plannedTime = plannedDateTime ? new Date(plannedDateTime) : request.plannedDateTime;
-    const existingRequest = await WorkingHoursRequest.findOne({
-      _id: { $ne: id }, // Loại trừ request hiện tại
-      requestedBy: request.requestedBy,
-      licensePlate: normalizedPlate,
-      status: { $in: ['pending', 'approved'] },
-      plannedDateTime: {
-        $gte: new Date(plannedTime.getTime() - 2 * 60 * 60 * 1000), // 2 giờ trước
-        $lte: new Date(plannedTime.getTime() + 2 * 60 * 60 * 1000)  // 2 giờ sau
-      }
-    });
-
-    if (existingRequest) {
-      return sendErrorResponse(res, 'Đã có yêu cầu tương tự trong khoảng thời gian này với biển số này', 400);
-    }
-
     request.licensePlate = normalizedPlate;
   }
 
@@ -310,29 +326,33 @@ export const updateWorkingHoursRequest = asyncHandler(async (req, res) => {
   if (requestType) {
     request.requestType = requestType;
     
-    // Nếu chuyển từ 'both' sang 'entry'/'exit', xóa plannedEndDateTime
-    if (requestType !== 'both') {
-      request.plannedEndDateTime = undefined;
+    // Nếu chuyển từ 'both' sang 'entry', xóa plannedExitTime
+    if (requestType === 'entry') {
+      request.plannedExitTime = undefined;
+    }
+    // Nếu chuyển từ 'both' sang 'exit', xóa plannedEntryTime
+    if (requestType === 'exit') {
+      request.plannedEntryTime = undefined;
     }
   }
 
   // Update fields
-  if (plannedDateTime) {
-    const plannedTime = new Date(plannedDateTime);
-    if (plannedTime <= new Date()) {
-      return sendErrorResponse(res, 'Thời gian dự kiến phải lớn hơn thời gian hiện tại', 400);
+  if (plannedEntryTime) {
+    const entryTime = new Date(plannedEntryTime);
+    if (entryTime <= new Date()) {
+      return sendErrorResponse(res, 'Thời gian vào phải lớn hơn thời gian hiện tại', 400);
     }
-    request.plannedDateTime = plannedTime;
+    request.plannedEntryTime = entryTime;
   }
 
-  if (plannedEndDateTime && (requestType === 'both' || request.requestType === 'both')) {
-    const endTime = new Date(plannedEndDateTime);
-    const startTime = plannedDateTime ? new Date(plannedDateTime) : request.plannedDateTime;
+  if (plannedExitTime) {
+    const exitTime = new Date(plannedExitTime);
+    const entryTime = plannedEntryTime ? new Date(plannedEntryTime) : request.plannedEntryTime;
     
-    if (endTime <= startTime) {
-      return sendErrorResponse(res, 'Thời gian kết thúc phải lớn hơn thời gian bắt đầu', 400);
+    if (entryTime && exitTime <= entryTime) {
+      return sendErrorResponse(res, 'Thời gian ra phải lớn hơn thời gian vào', 400);
     }
-    request.plannedEndDateTime = endTime;
+    request.plannedExitTime = exitTime;
   }
 
   if (reason) {
@@ -341,6 +361,37 @@ export const updateWorkingHoursRequest = asyncHandler(async (req, res) => {
 
   if (metadata) {
     request.metadata = { ...request.metadata, ...metadata };
+  }
+
+  // Kiểm tra trùng lặp trước khi save (sau khi đã update tất cả field)
+  const checkEntryTime = request.plannedEntryTime;
+  const checkExitTime = request.plannedExitTime;
+  
+  if (checkEntryTime || checkExitTime) {
+    const existingRequest = await WorkingHoursRequest.findOne({
+      _id: { $ne: id },
+      requestedBy: request.requestedBy,
+      licensePlate: request.licensePlate,
+      status: { $in: ['pending', 'approved'] },
+      $or: [
+        checkEntryTime ? {
+          plannedEntryTime: {
+            $gte: new Date(checkEntryTime.getTime() - 60 * 60 * 1000), // 1 giờ trước
+            $lte: new Date(checkEntryTime.getTime() + 60 * 60 * 1000)  // 1 giờ sau
+          }
+        } : null,
+        checkExitTime ? {
+          plannedExitTime: {
+            $gte: new Date(checkExitTime.getTime() - 60 * 60 * 1000), // 1 giờ trước
+            $lte: new Date(checkExitTime.getTime() + 60 * 60 * 1000)  // 1 giờ sau
+          }
+        } : null
+      ].filter(Boolean)
+    });
+
+    if (existingRequest) {
+      return sendErrorResponse(res, 'Đã có yêu cầu tương tự trong khoảng thời gian này', 400);
+    }
   }
 
   await request.save();
