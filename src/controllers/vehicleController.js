@@ -12,10 +12,15 @@ export const getVehicles = asyncHandler(async (req, res) => {
   const { vehicleType, isActive, search, owner } = req.query;
 
   // Build base query filter
-  const baseFilter = {};
+  const baseFilter = {
+    isActive: true // Chỉ lấy phương tiện đang hoạt động
+  };
   
   if (vehicleType) baseFilter.vehicleType = vehicleType;
-  if (isActive !== undefined) baseFilter.isActive = isActive === 'true';
+  // Cho phép admin/manager xem cả phương tiện không active nếu cần
+  if (isActive !== undefined && ['admin', 'manager'].includes(req.user.role)) {
+    baseFilter.isActive = isActive === 'true';
+  }
   if (owner) baseFilter.owner = owner;
   
   if (search) {
@@ -239,28 +244,28 @@ export const updateVehicle = asyncHandler(async (req, res) => {
     }
   });
 
-  sendSuccessResponse(res, { vehicle: updatedVehicle }, 'Cập nhật vehicle thành công');
+  sendSuccessResponse(res, { vehicle: updatedVehicle }, 'Cập nhật phương tiện thành công');
 });
 
 // Xóa vehicle (deactivate)
 export const deleteVehicle = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const vehicle = await Vehicle.findById(id);
-  if (!vehicle) {
-    return sendErrorResponse(res, 'Không tìm thấy vehicle', 404);
+  // Chỉ admin và manager mới có quyền xóa
+  if (req.user.role === 'user') {
+    return sendErrorResponse(res, 'Không có quyền xóa phương tiện. Chỉ admin hoặc manager mới có thể xóa.', 403);
   }
 
-  // Kiểm tra quyền xóa
-  if (req.user.role === 'user' && vehicle.owner.toString() !== req.user._id.toString()) {
-    return sendErrorResponse(res, 'Không có quyền xóa vehicle này', 403);
+  const vehicle = await Vehicle.findById(id);
+  if (!vehicle) {
+    return sendErrorResponse(res, 'Không tìm thấy phương tiện', 404);
   }
 
   // Deactivate thay vì xóa hoàn toàn
   vehicle.isActive = false;
   await vehicle.save();
 
-  sendSuccessResponse(res, null, 'Đã vô hiệu hóa vehicle');
+  sendSuccessResponse(res, null, 'Đã xoá phương tiện');
 });
 
 // Kích hoạt lại vehicle
@@ -274,7 +279,7 @@ export const activateVehicle = asyncHandler(async (req, res) => {
 
   // Kiểm tra quyền kích hoạt
   if (req.user.role === 'user' && vehicle.owner.toString() !== req.user._id.toString()) {
-    return sendErrorResponse(res, 'Không có quyền kích hoạt vehicle này', 403);
+    return sendErrorResponse(res, 'Không có quyền kích hoạt phương tiện này', 403);
   }
 
   vehicle.isActive = true;
@@ -290,7 +295,7 @@ export const activateVehicle = asyncHandler(async (req, res) => {
       }
     });
 
-  sendSuccessResponse(res, { vehicle: populatedVehicle }, 'Đã kích hoạt vehicle');
+  sendSuccessResponse(res, { vehicle: populatedVehicle }, 'Đã kích hoạt phương tiện');
 });
 
 // Lấy vehicles của user hiện tại
@@ -298,10 +303,16 @@ export const getMyVehicles = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPaginationParams(req);
   const { vehicleType, isActive } = req.query;
 
-  const filter = { owner: req.user._id };
+  const filter = { 
+    owner: req.user._id,
+    isActive: true // Chỉ lấy phương tiện đang hoạt động
+  };
   
   if (vehicleType) filter.vehicleType = vehicleType;
-  if (isActive !== undefined) filter.isActive = isActive === 'true';
+  // Cho phép admin/manager xem cả phương tiện không active nếu cần
+  if (isActive !== undefined && ['admin', 'manager'].includes(req.user.role)) {
+    filter.isActive = isActive === 'true';
+  }
 
   const [vehicles, total] = await Promise.all([
     Vehicle.find(filter)
