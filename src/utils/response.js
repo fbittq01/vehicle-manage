@@ -58,14 +58,14 @@ export const getPaginationParams = (req) => {
 
 // Utility để tạo date với thời gian bắt đầu ngày (00:00:00.000)
 export const getStartOfDay = (dateString) => {
-  const date = new Date(dateString);
-  date.setHours(0, 0, 0, 0);
-  return date;
+  // Parse date string as YYYY-MM-DD và tạo date theo UTC
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
 };
 
 // Utility để tạo date với thời gian cuối ngày (23:59:59.999)
 export const getEndOfDay = (dateString) => {
-  const date = new Date(dateString);
-  date.setHours(23, 59, 59, 999);
-  return date;
+  // Parse date string as YYYY-MM-DD và tạo date theo UTC
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
 };

@@ -1,14 +1,15 @@
 /**
- * Tìm working hour/shift phù hợp cho một thời điểm và action cụ thể
+ * Tìm working hour vi phạm cho một thời điểm và action cụ thể
  * 
- * Logic:
- * - Entry: Tìm ca có startTime gần nhất và phù hợp (đang trong ca hoặc sắp bắt đầu)
- * - Exit: Tìm ca có endTime gần nhất và phù hợp (đang trong ca hoặc vừa kết thúc)
+ * Logic: startTime -> endTime là khoảng thời gian CẤM
+ * - Entry: Nếu vào TRONG khoảng startTime -> endTime → Vi phạm (đi muộn)
+ * - Exit: Nếu ra TRONG khoảng startTime -> endTime → Vi phạm (về sớm)
+ * - Nếu NGOÀI khoảng này → Hợp lệ
  * 
  * @param {Date} dateTime - Thời điểm cần kiểm tra
  * @param {string} action - 'entry' hoặc 'exit'
  * @param {Array} workingHoursList - Danh sách các working hours active
- * @returns {Object|null} Working hour phù hợp hoặc null nếu ngoài giờ làm việc
+ * @returns {Object|null} Working hour bị vi phạm hoặc null nếu hợp lệ
  */
 export function findRelevantWorkingHour(dateTime, action, workingHoursList) {
   if (!dateTime || !action || !workingHoursList || workingHoursList.length === 0) {
@@ -24,7 +25,7 @@ export function findRelevantWorkingHour(dateTime, action, workingHoursList) {
   );
 
   if (applicableWH.length === 0) {
-    return null; // Không phải ngày làm việc
+    return null; // Không có quy định cho ngày này
   }
 
   // Helper function để so sánh thời gian (HH:mm)
@@ -35,174 +36,90 @@ export function findRelevantWorkingHour(dateTime, action, workingHoursList) {
 
   const currentMinutes = timeToMinutes(timeStr);
 
-  if (action === 'entry') {
-    // Entry: Tìm ca phù hợp khi vào
-    // 1. Ưu tiên ca đang trong giờ: startTime <= timeStr <= endTime
-    // 2. Hoặc ca sắp bắt đầu (trong tolerance)
+  // Tìm working hour bị vi phạm (nếu có)
+  for (const wh of applicableWH) {
+    const startMinutes = timeToMinutes(wh.startTime);
+    const endMinutes = timeToMinutes(wh.endTime);
     
-    let bestMatch = null;
-    let smallestDiff = Infinity;
+    // Phát hiện overnight shift (ca qua đêm)
+    const isOvernightShift = endMinutes < startMinutes;
 
-    for (const wh of applicableWH) {
-      const startMinutes = timeToMinutes(wh.startTime);
-      const endMinutes = timeToMinutes(wh.endTime);
-      const tolerance = wh.lateToleranceMinutes || 30;
-      
-      // Phát hiện overnight shift (ca qua đêm)
-      const isOvernightShift = endMinutes < startMinutes;
-
-      // Kiểm tra xem có trong ca không (bao gồm tolerance)
-      let isInShift;
-      if (isOvernightShift) {
-        // Ca qua đêm: nằm trong ca nếu >= startTime HOẶC <= endTime
-        isInShift = currentMinutes >= (startMinutes - tolerance) || 
-                    currentMinutes <= endMinutes;
-      } else {
-        // Ca thường: nằm trong ca nếu >= startTime VÀ <= endTime
-        isInShift = currentMinutes >= (startMinutes - tolerance) && 
-                    currentMinutes <= endMinutes;
-      }
-
-      if (isInShift) {
-        // Tính khoảng cách đến điểm bắt đầu ca
-        let diff;
-        if (isOvernightShift) {
-          // Với ca qua đêm, tính khoảng cách có xét đến việc qua ngày
-          if (currentMinutes >= startMinutes) {
-            diff = currentMinutes - startMinutes;
-          } else {
-            // Qua đêm: tính từ startTime đến 24:00 + từ 00:00 đến currentTime
-            diff = (1440 - startMinutes) + currentMinutes;
-          }
-        } else {
-          diff = Math.abs(currentMinutes - startMinutes);
-        }
-        
-        // Chọn ca có startTime gần nhất
-        if (diff < smallestDiff) {
-          smallestDiff = diff;
-          bestMatch = wh;
-        }
-      }
+    // Kiểm tra có nằm trong khoảng CẤM không
+    let isInRestrictedPeriod;
+    if (isOvernightShift) {
+      // Ca qua đêm: trong khoảng cấm nếu >= startTime HOẶC <= endTime
+      isInRestrictedPeriod = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+    } else {
+      // Ca thường: trong khoảng cấm nếu >= startTime VÀ <= endTime
+      isInRestrictedPeriod = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
     }
 
-    return bestMatch;
-
-  } else if (action === 'exit') {
-    // Exit: Tìm ca phù hợp khi ra
-    // 1. Ưu tiên ca đang trong giờ: startTime <= timeStr <= endTime
-    // 2. Hoặc ca vừa kết thúc (trong tolerance - có thể ra muộn)
-    
-    let bestMatch = null;
-    let smallestDiff = Infinity;
-
-    for (const wh of applicableWH) {
-      const startMinutes = timeToMinutes(wh.startTime);
-      const endMinutes = timeToMinutes(wh.endTime);
-      const tolerance = wh.earlyToleranceMinutes || 30;
-      
-      // Phát hiện overnight shift (ca qua đêm)
-      const isOvernightShift = endMinutes < startMinutes;
-
-      // Kiểm tra xem có trong ca không (bao gồm tolerance và có thể ra sau endTime)
-      let isInShift;
-      if (isOvernightShift) {
-        // Ca qua đêm: nằm trong ca nếu >= startTime HOẶC <= endTime + tolerance
-        isInShift = currentMinutes >= startMinutes || 
-                    currentMinutes <= (endMinutes + tolerance * 2);
-      } else {
-        // Ca thường: nằm trong ca nếu >= startTime VÀ <= endTime + tolerance
-        isInShift = currentMinutes >= startMinutes && 
-                    currentMinutes <= (endMinutes + tolerance * 2);
-      }
-
-      if (isInShift) {
-        // Tính khoảng cách đến điểm kết thúc ca
-        let diff;
-        if (isOvernightShift) {
-          // Với ca qua đêm, tính khoảng cách có xét đến việc qua ngày
-          if (currentMinutes <= endMinutes) {
-            diff = Math.abs(currentMinutes - endMinutes);
-          } else {
-            // Từ currentTime đến 24:00 + từ 00:00 đến endTime
-            diff = (1440 - currentMinutes) + endMinutes;
-          }
-        } else {
-          diff = Math.abs(currentMinutes - endMinutes);
-        }
-        
-        // Chọn ca có endTime gần nhất
-        if (diff < smallestDiff) {
-          smallestDiff = diff;
-          bestMatch = wh;
-        }
-      }
+    // Nếu nằm trong khoảng cấm → Vi phạm
+    if (isInRestrictedPeriod) {
+      return wh; // Trả về working hour bị vi phạm
     }
-
-    return bestMatch;
   }
 
-  return null;
+  return null; // Không vi phạm bất kỳ working hour nào
 }
 
 /**
  * Kiểm tra vi phạm cho một access log với shift-based logic
+ * 
+ * Logic:
+ * - Nếu vào/ra TRONG khoảng startTime -> endTime → Vi phạm
+ * - Nếu vào/ra NGOÀI khoảng này → Hợp lệ
  * 
  * @param {Object} log - Access log object
  * @param {Array} workingHoursList - Danh sách working hours
  * @returns {Object} Kết quả kiểm tra vi phạm
  */
 export function checkViolationWithShift(log, workingHoursList) {
-  const relevantWH = findRelevantWorkingHour(log.createdAt, log.action, workingHoursList);
+  const violatedWH = findRelevantWorkingHour(log.createdAt, log.action, workingHoursList);
 
   const result = {
-    relevantWorkingHour: relevantWH ? {
-      id: relevantWH._id,
-      name: relevantWH.name,
-      startTime: relevantWH.startTime,
-      endTime: relevantWH.endTime
+    relevantWorkingHour: violatedWH ? {
+      id: violatedWH._id,
+      name: violatedWH.name,
+      startTime: violatedWH.startTime,
+      endTime: violatedWH.endTime
     } : null,
-    status: 'outside_hours',
+    status: 'allowed',
     isViolation: false,
     violationMinutes: 0,
     reason: null
   };
 
-  if (!relevantWH) {
-    result.reason = 'Ngoài giờ làm việc';
+  // Nếu không có working hour vi phạm → Hợp lệ
+  if (!violatedWH) {
+    result.reason = 'Hợp lệ - Ngoài khoảng thời gian cấm';
     return result;
   }
 
   // Kiểm tra có approved request không
   const hasApprovedRequest = log.metadata?.workingHoursRequest?.requestId;
 
-  if (log.action === 'entry') {
-    const lateCheck = relevantWH.isLate(log.createdAt);
-    result.lateCheck = lateCheck;
-    
-    if (lateCheck.isLate && !hasApprovedRequest) {
-      result.status = 'late';
-      result.isViolation = true;
-      result.violationMinutes = lateCheck.lateMinutes;
-      result.reason = `Đi muộn ${lateCheck.lateMinutes} phút so với ca ${relevantWH.name}`;
-    } else {
-      result.status = 'ontime';
-      result.reason = hasApprovedRequest ? 'Có yêu cầu được phê duyệt' : 'Đúng giờ';
-    }
+  if (hasApprovedRequest) {
+    result.status = 'approved';
+    result.reason = 'Có yêu cầu được phê duyệt';
+    return result;
+  }
 
+  // Có vi phạm và không có approved request
+  if (log.action === 'entry') {
+    const lateCheck = violatedWH.isLate(log.createdAt);
+    result.lateCheck = lateCheck;
+    result.status = 'late';
+    result.isViolation = true;
+    result.violationMinutes = lateCheck.lateMinutes || 0;
+    result.reason = `Vi phạm - Vào trong khoảng thời gian cấm (${violatedWH.startTime} - ${violatedWH.endTime})`;
   } else if (log.action === 'exit') {
-    const earlyCheck = relevantWH.isEarly(log.createdAt);
+    const earlyCheck = violatedWH.isEarly(log.createdAt);
     result.earlyCheck = earlyCheck;
-    
-    if (earlyCheck.isEarly && !hasApprovedRequest) {
-      result.status = 'early';
-      result.isViolation = true;
-      result.violationMinutes = earlyCheck.earlyMinutes;
-      result.reason = `Về sớm ${earlyCheck.earlyMinutes} phút so với ca ${relevantWH.name}`;
-    } else {
-      result.status = 'ontime';
-      result.reason = hasApprovedRequest ? 'Có yêu cầu được phê duyệt' : 'Đúng giờ';
-    }
+    result.status = 'early';
+    result.isViolation = true;
+    result.violationMinutes = earlyCheck.earlyMinutes || 0;
+    result.reason = `Vi phạm - Ra trong khoảng thời gian cấm (${violatedWH.startTime} - ${violatedWH.endTime})`;
   }
 
   return result;
