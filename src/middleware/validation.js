@@ -467,15 +467,7 @@ export const workingHoursSchema = Joi.object({
     .messages({
       'boolean.base': 'Trạng thái hoạt động phải là true hoặc false'
     })
-}).custom((value, helpers) => {
-  // Custom validation: startTime phải nhỏ hơn endTime
-  if (value.startTime && value.endTime && value.startTime >= value.endTime) {
-    return helpers.error('custom.timeRange');
-  }
-  return value;
-}).messages({
-  'custom.timeRange': 'Giờ bắt đầu phải nhỏ hơn giờ kết thúc'
-});
+})
 
 export const updateWorkingHoursSchema = workingHoursSchema.fork(['name', 'startTime', 'endTime', 'workingDays'], (schema) => schema.optional());
 

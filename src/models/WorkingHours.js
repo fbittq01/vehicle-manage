@@ -89,18 +89,37 @@ workingHoursSchema.methods.isWorkingTime = function(dateTime) {
     return { isWorking: false, reason: 'Không phải ngày làm việc' };
   }
   
-  // So sánh thời gian
-  const isInWorkingHours = timeStr >= this.startTime && timeStr <= this.endTime;
+  // Helper function để so sánh thời gian
+  const timeToMinutes = (timeStr) => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+  
+  const currentMinutes = timeToMinutes(timeStr);
+  const startMinutes = timeToMinutes(this.startTime);
+  const endMinutes = timeToMinutes(this.endTime);
+  
+  // Kiểm tra có trong khoảng cấm không
+  let isInRestrictedPeriod;
+  const isOvernightShift = endMinutes < startMinutes;
+  
+  if (isOvernightShift) {
+    // Ca qua đêm: trong khoảng cấm nếu >= startTime HOẶC <= endTime
+    isInRestrictedPeriod = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+  } else {
+    // Ca thường: trong khoảng cấm nếu >= startTime VÀ <= endTime
+    isInRestrictedPeriod = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+  }
   
   return {
-    isWorking: isInWorkingHours,
-    reason: isInWorkingHours ? 'Trong giờ làm việc' : 'Ngoài giờ làm việc',
+    isWorking: !isInRestrictedPeriod, // Ngược lại: trong khoảng cấm = không được phép
+    reason: isInRestrictedPeriod ? 'Trong khoảng thời gian cấm' : 'Ngoài khoảng thời gian cấm',
     timeStr,
     dayOfWeek
   };
 };
 
-// Method kiểm tra có muộn giờ không
+// Method kiểm tra có vi phạm khi vào không (đi trong khoảng cấm)
 workingHoursSchema.methods.isLate = function(entryTime) {
   const date = new Date(entryTime);
   const dayOfWeek = date.getDay();
@@ -110,32 +129,55 @@ workingHoursSchema.methods.isLate = function(entryTime) {
     return { isLate: false, reason: 'Không phải ngày làm việc' };
   }
   
-  // Kiểm tra có phải trong thời gian làm việc (từ startTime đến endTime)
-  if (timeStr < this.startTime || timeStr > this.endTime) {
-    return { isLate: false, reason: 'Ngoài giờ làm việc' };
+  // Helper function
+  const timeToMinutes = (timeStr) => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+  
+  const currentMinutes = timeToMinutes(timeStr);
+  const startMinutes = timeToMinutes(this.startTime);
+  const endMinutes = timeToMinutes(this.endTime);
+  
+  // Kiểm tra có trong khoảng cấm không
+  let isInRestrictedPeriod;
+  const isOvernightShift = endMinutes < startMinutes;
+  
+  if (isOvernightShift) {
+    isInRestrictedPeriod = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+  } else {
+    isInRestrictedPeriod = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
   }
   
-  // Tính thời gian cho phép muộn
-  const [startHour, startMinute] = this.startTime.split(':').map(Number);
-  const allowedLateTime = new Date(date);
-  allowedLateTime.setHours(startHour, startMinute + this.lateToleranceMinutes, 0, 0);
+  if (!isInRestrictedPeriod) {
+    return { isLate: false, reason: 'Ngoài khoảng thời gian cấm' };
+  }
   
-  const actualTime = new Date(date);
-  actualTime.setHours(...timeStr.split(':').map(Number), 0, 0);
+  // Tính số phút vi phạm (từ startTime đến thời điểm hiện tại)
+  let lateMinutes;
+  if (isOvernightShift) {
+    if (currentMinutes >= startMinutes) {
+      lateMinutes = currentMinutes - startMinutes;
+    } else {
+      lateMinutes = (1440 - startMinutes) + currentMinutes;
+    }
+  } else {
+    lateMinutes = currentMinutes - startMinutes;
+  }
   
-  const isLate = actualTime > allowedLateTime;
-  const lateMinutes = isLate ? Math.floor((actualTime - allowedLateTime) / (1000 * 60)) : 0;
+  // Áp dụng tolerance
+  lateMinutes = Math.max(0, lateMinutes - this.lateToleranceMinutes);
   
   return {
-    isLate,
+    isLate: true,
     lateMinutes,
-    allowedTime: this.startTime,
+    restrictedPeriod: `${this.startTime} - ${this.endTime}`,
     actualTime: timeStr,
     toleranceMinutes: this.lateToleranceMinutes
   };
 };
 
-// Method kiểm tra có về sớm không
+// Method kiểm tra có vi phạm khi ra không (ra trong khoảng cấm)
 workingHoursSchema.methods.isEarly = function(exitTime) {
   const date = new Date(exitTime);
   const dayOfWeek = date.getDay();
@@ -145,26 +187,49 @@ workingHoursSchema.methods.isEarly = function(exitTime) {
     return { isEarly: false, reason: 'Không phải ngày làm việc' };
   }
   
-  // Kiểm tra có phải trong thời gian làm việc (từ startTime đến endTime)
-  if (timeStr < this.startTime || timeStr > this.endTime) {
-    return { isEarly: false, reason: 'Ngoài giờ làm việc' };
+  // Helper function
+  const timeToMinutes = (timeStr) => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+  
+  const currentMinutes = timeToMinutes(timeStr);
+  const startMinutes = timeToMinutes(this.startTime);
+  const endMinutes = timeToMinutes(this.endTime);
+  
+  // Kiểm tra có trong khoảng cấm không
+  let isInRestrictedPeriod;
+  const isOvernightShift = endMinutes < startMinutes;
+  
+  if (isOvernightShift) {
+    isInRestrictedPeriod = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+  } else {
+    isInRestrictedPeriod = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
   }
   
-  // Tính thời gian cho phép về sớm
-  const [endHour, endMinute] = this.endTime.split(':').map(Number);
-  const allowedEarlyTime = new Date(date);
-  allowedEarlyTime.setHours(endHour, endMinute - this.earlyToleranceMinutes, 0, 0);
+  if (!isInRestrictedPeriod) {
+    return { isEarly: false, reason: 'Ngoài khoảng thời gian cấm' };
+  }
   
-  const actualTime = new Date(date);
-  actualTime.setHours(...timeStr.split(':').map(Number), 0, 0);
+  // Tính số phút vi phạm (từ thời điểm hiện tại đến endTime)
+  let earlyMinutes;
+  if (isOvernightShift) {
+    if (currentMinutes <= endMinutes) {
+      earlyMinutes = endMinutes - currentMinutes;
+    } else {
+      earlyMinutes = (1440 - currentMinutes) + endMinutes;
+    }
+  } else {
+    earlyMinutes = endMinutes - currentMinutes;
+  }
   
-  const isEarly = actualTime < allowedEarlyTime;
-  const earlyMinutes = isEarly ? Math.floor((allowedEarlyTime - actualTime) / (1000 * 60)) : 0;
+  // Áp dụng tolerance
+  earlyMinutes = Math.max(0, earlyMinutes - this.earlyToleranceMinutes);
   
   return {
-    isEarly,
+    isEarly: true,
     earlyMinutes,
-    allowedTime: this.endTime,
+    restrictedPeriod: `${this.startTime} - ${this.endTime}`,
     actualTime: timeStr,
     toleranceMinutes: this.earlyToleranceMinutes
   };
