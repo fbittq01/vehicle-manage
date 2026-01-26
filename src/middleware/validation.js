@@ -691,7 +691,7 @@ export const workingHoursRequestSchema = Joi.object({
   plannedExitTime: Joi.date()
     .when('requestType', {
       is: 'both',
-      then: Joi.date().greater(Joi.ref('plannedEntryTime')).required(),
+      // then: Joi.date().greater(Joi.ref('plannedEntryTime')).required(),
       otherwise: Joi.optional()
     })
     .when('requestType', {

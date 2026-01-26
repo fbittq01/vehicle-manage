@@ -193,9 +193,9 @@ export const createWorkingHoursRequest = asyncHandler(async (req, res) => {
   if (exitTime && exitTime <= now) {
     return sendErrorResponse(res, 'Thời gian ra phải lớn hơn thời gian hiện tại', 400);
   }
-  if (entryTime && exitTime && exitTime <= entryTime) {
-    return sendErrorResponse(res, 'Thời gian ra phải lớn hơn thời gian vào', 400);
-  }
+  // if (entryTime && exitTime && exitTime <= entryTime) {
+  //   return sendErrorResponse(res, 'Thời gian ra phải lớn hơn thời gian vào', 400);
+  // }
   
   // Kiểm tra không có yêu cầu trùng lặp trong cùng khoảng thời gian
   const checkTime = entryTime || exitTime;
@@ -349,9 +349,9 @@ export const updateWorkingHoursRequest = asyncHandler(async (req, res) => {
     const exitTime = new Date(plannedExitTime);
     const entryTime = plannedEntryTime ? new Date(plannedEntryTime) : request.plannedEntryTime;
     
-    if (entryTime && exitTime <= entryTime) {
-      return sendErrorResponse(res, 'Thời gian ra phải lớn hơn thời gian vào', 400);
-    }
+    // if (entryTime && exitTime <= entryTime) {
+    //   return sendErrorResponse(res, 'Thời gian ra phải lớn hơn thời gian vào', 400);
+    // }
     request.plannedExitTime = exitTime;
   }
 
@@ -581,8 +581,8 @@ export const checkAndApplyRequest = async (accessLog) => {
     const applicableRequest = await WorkingHoursRequest.findApplicableRequest(accessLog);
     
     if (applicableRequest) {
-      // Đánh dấu yêu cầu đã được sử dụng
-      await applicableRequest.markAsUsed(accessLog._id);
+      // Đánh dấu yêu cầu đã được sử dụng (truyền thêm action)
+      await applicableRequest.markAsUsed(accessLog._id, accessLog.action);
       
       // Trả về thông tin để có thể bỏ qua kiểm tra vi phạm giờ hành chính
       return {
