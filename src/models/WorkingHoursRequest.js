@@ -167,6 +167,23 @@ workingHoursRequestSchema.methods.canApplyToAccessLog = function(accessLog) {
   // Kiểm tra loại action
   if (this.requestType !== 'both' && this.requestType !== accessLog.action) return false;
   
+  // Với requestType = 'both', kiểm tra action này đã được sử dụng chưa
+  if (this.requestType === 'both' && this.relatedAccessLogs.length > 0) {
+    // Cần populate relatedAccessLogs để kiểm tra action
+    // Nếu chưa populate, cho phép sử dụng (sẽ check ở findApplicableRequest)
+    const usedActions = new Set();
+    for (const log of this.relatedAccessLogs) {
+      if (log.action) {
+        usedActions.add(log.action);
+      }
+    }
+    
+    // Nếu action hiện tại đã được sử dụng rồi, không cho phép
+    if (usedActions.has(accessLog.action)) {
+      return false;
+    }
+  }
+  
   // Kiểm tra thời gian (trong vòng ±30 phút so với thời gian dự kiến)
   const tolerance = 30 * 60 * 1000; // 30 phút
   const logTime = new Date(accessLog.createdAt);
@@ -184,14 +201,26 @@ workingHoursRequestSchema.methods.canApplyToAccessLog = function(accessLog) {
 };
 
 // Method đánh dấu yêu cầu đã được sử dụng
-workingHoursRequestSchema.methods.markAsUsed = function(accessLogId) {
-  this.status = 'used';
+workingHoursRequestSchema.methods.markAsUsed = function(accessLogId, action) {
+  // Thêm access log vào danh sách
   this.relatedAccessLogs.push(accessLogId);
+  
+  // Quyết định khi nào đánh dấu 'used' dựa vào requestType
+  if (this.requestType === 'both') {
+    // Với 'both', chỉ đánh dấu 'used' khi đã có 2 access logs (vào và ra)
+    if (this.relatedAccessLogs.length >= 2) {
+      this.status = 'used';
+    }
+  } else {
+    // Với 'entry' hoặc 'exit', đánh dấu 'used' ngay
+    this.status = 'used';
+  }
+  
   return this.save();
 };
 
 // Static method tìm yêu cầu có thể áp dụng cho access log
-workingHoursRequestSchema.statics.findApplicableRequest = function(accessLog) {
+workingHoursRequestSchema.statics.findApplicableRequest = async function(accessLog) {
   const tolerance = 30 * 60 * 1000; // 30 phút
   const logTime = new Date(accessLog.createdAt);
   const minTime = new Date(logTime.getTime() - tolerance);
@@ -204,7 +233,7 @@ workingHoursRequestSchema.statics.findApplicableRequest = function(accessLog) {
     ? 'plannedEntryTime' 
     : 'plannedExitTime';
   
-  return this.findOne({
+  const request = await this.findOne({
     licensePlate: accessLog.licensePlate,
     status: 'approved',
     // Yêu cầu phải phù hợp với action (entry/exit) hoặc là 'both'
@@ -216,7 +245,23 @@ workingHoursRequestSchema.statics.findApplicableRequest = function(accessLog) {
       { validUntil: { $gte: new Date() } },
       { validUntil: null }
     ]
-  }).populate('requestedBy', 'name username employeeId department');
+  })
+  .populate('requestedBy', 'name username employeeId department')
+  .populate('relatedAccessLogs', 'action createdAt');
+  
+  // Nếu tìm thấy request và là type 'both', kiểm tra action đã được sử dụng chưa
+  if (request && request.requestType === 'both' && request.relatedAccessLogs.length > 0) {
+    const usedActions = new Set(
+      request.relatedAccessLogs.map(log => log.action)
+    );
+    
+    // Nếu action hiện tại đã được sử dụng, return null
+    if (usedActions.has(accessLog.action)) {
+      return null;
+    }
+  }
+  
+  return request;
 };
 
 // Static method auto-expire các yêu cầu đã hết hạn
