@@ -630,6 +630,14 @@ class SocketService {
     return false;
   }
 
+  // Thông báo cho Python Detection Server cập nhật danh sách camera
+  notifyCameraListUpdate() {
+    this.sendToPythonDetectionServer({
+      type: 'reload_recognition_config'
+    });
+    console.log('🔄 Sent reload_recognition_config request to Python Detection server');
+  }
+
   // Simulate license plate detection for testing (when Python server is disabled)
   simulateLicensePlateDetection(licensePlate, gateId = 'gate_001', gateName = 'Main Gate', action = 'entry') {
     const mockData = {
