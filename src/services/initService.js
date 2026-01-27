@@ -54,10 +54,10 @@ export const syncMediaMTXPaths = async () => {
       return;
     }
 
-    // Lấy tất cả active cameras có streamUrl
+    // Lấy tất cả active cameras có rtspUrl (cho WebRTC)
     const cameras = await Camera.find({
       'status.isActive': true,
-      'technical.streamUrl': { $exists: true, $ne: null }
+      'technical.rtspUrl': { $exists: true, $ne: null }
     });
 
     if (cameras.length === 0) {

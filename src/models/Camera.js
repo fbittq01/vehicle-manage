@@ -90,6 +90,11 @@ const cameraSchema = new mongoose.Schema({
       trim: true,
       maxlength: [500, 'Stream URL không được vượt quá 500 ký tự']
     },
+    rtspUrl: {
+      type: String,
+      trim: true,
+      maxlength: [500, 'RTSP URL không được vượt quá 500 ký tự']
+    },
     resolution: {
       width: {
         type: Number,
@@ -200,6 +205,14 @@ const cameraSchema = new mongoose.Schema({
       type: Number,
       min: [100, 'Khoảng thời gian xử lý tối thiểu 100ms'],
       default: 1000 // milliseconds
+    },
+    supportedVehicleTypes: {
+      type: [String],
+      enum: {
+        values: ['car', 'motorcycle', 'truck', 'bus', 'bicycle', 'all'],
+        message: '{VALUE} không phải là loại phương tiện hợp lệ'
+      },
+      default: ['all']
     }
   },
 
