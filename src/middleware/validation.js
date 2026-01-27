@@ -358,6 +358,9 @@ export const cameraSchema = Joi.object({
     streamUrl: Joi.string()
       .max(500)
       .optional(),
+    rtspUrl: Joi.string()
+      .max(500)
+      .optional(),
     resolution: Joi.object({
       width: Joi.number().min(1).optional(),
       height: Joi.number().min(1).optional()
@@ -379,7 +382,12 @@ export const cameraSchema = Joi.object({
       width: Joi.number().min(1).optional(),
       height: Joi.number().min(1).optional()
     }).optional(),
-    processingInterval: Joi.number().min(100).optional()
+    processingInterval: Joi.number().min(100).optional(),
+    supportedVehicleTypes: Joi.array()
+      .items(Joi.string().valid('car', 'motorcycle', 'truck', 'bus', 'bicycle', 'other'))
+      .min(1)
+      .unique()
+      .optional()
   }).optional(),
   managedBy: Joi.string().optional(),
   manufacturer: Joi.string().max(100).optional(),

@@ -54,10 +54,10 @@ class MediaMTXService {
    * Thêm path mới vào MediaMTX
    * 
    * @param {string} cameraId - Camera ID (sẽ dùng làm path name)
-   * @param {string} streamUrl - RTSP stream URL
+   * @param {string} rtspUrl - RTSP stream URL cho WebRTC
    * @returns {Promise<{success: boolean, message: string, data?: any}>}
    */
-  async addPath(cameraId, streamUrl) {
+  async addPath(cameraId, rtspUrl) {
     if (!this.enabled) {
       return { 
         success: false, 
@@ -65,10 +65,10 @@ class MediaMTXService {
       };
     }
 
-    if (!cameraId || !streamUrl) {
+    if (!cameraId || !rtspUrl) {
       return { 
         success: false, 
-        message: 'Camera ID and stream URL are required' 
+        message: 'Camera ID and RTSP URL are required' 
       };
     }
 
@@ -80,7 +80,7 @@ class MediaMTXService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          source: streamUrl,
+          source: rtspUrl,
         }),
       });
 
@@ -112,10 +112,10 @@ class MediaMTXService {
    * Cập nhật path trong MediaMTX
    * 
    * @param {string} cameraId - Camera ID
-   * @param {string} streamUrl - RTSP stream URL mới
+   * @param {string} rtspUrl - RTSP stream URL mới cho WebRTC
    * @returns {Promise<{success: boolean, message: string, data?: any}>}
    */
-  async updatePath(cameraId, streamUrl) {
+  async updatePath(cameraId, rtspUrl) {
     if (!this.enabled) {
       return { 
         success: false, 
@@ -123,10 +123,10 @@ class MediaMTXService {
       };
     }
 
-    if (!cameraId || !streamUrl) {
+    if (!cameraId || !rtspUrl) {
       return { 
         success: false, 
-        message: 'Camera ID and stream URL are required' 
+        message: 'Camera ID and RTSP URL are required' 
       };
     }
 
@@ -138,7 +138,7 @@ class MediaMTXService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          source: streamUrl,
+          source: rtspUrl,
         }),
       });
 
@@ -297,9 +297,9 @@ class MediaMTXService {
     };
 
     for (const camera of cameras) {
-      // Chỉ sync cameras có streamUrl
-      if (!camera.technical?.streamUrl) {
-        console.log(`⏭️ MediaMTX: Skipping ${camera.cameraId} - no stream URL`);
+      // Chỉ sync cameras có rtspUrl cho WebRTC
+      if (!camera.technical?.rtspUrl) {
+        console.log(`⏭️ MediaMTX: Skipping ${camera.cameraId} - no RTSP URL`);
         continue;
       }
 
@@ -309,7 +309,7 @@ class MediaMTXService {
         continue;
       }
 
-      const result = await this.addPath(camera.cameraId, camera.technical.streamUrl);
+      const result = await this.addPath(camera.cameraId, camera.technical.rtspUrl);
       
       if (result.success) {
         results.success++;

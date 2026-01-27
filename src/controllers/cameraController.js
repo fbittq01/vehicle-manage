@@ -148,10 +148,10 @@ export const createCamera = async (req, res) => {
     // Thêm thông tin mật khẩu đã hash
     const cameraObj = populatedCamera.toObject();
 
-    // Đồng bộ với MediaMTX nếu có streamUrl
+    // Đồng bộ với MediaMTX nếu có rtspUrl (cho WebRTC)
     let mediamtxStatus = null;
-    if (camera.technical?.streamUrl) {
-      const mtxResult = await mediamtxService.addPath(camera.cameraId, camera.technical.streamUrl);
+    if (camera.technical?.rtspUrl) {
+      const mtxResult = await mediamtxService.addPath(camera.cameraId, camera.technical.rtspUrl);
       mediamtxStatus = {
         synced: mtxResult.success,
         message: mtxResult.message
@@ -284,10 +284,10 @@ export const updateCamera = async (req, res) => {
     // Thêm thông tin mật khẩu đã mã hóa
     const cameraObj = populatedCamera.toObject();
 
-    // Đồng bộ với MediaMTX nếu streamUrl có thay đổi
+    // Đồng bộ với MediaMTX nếu rtspUrl có thay đổi (cho WebRTC)
     let mediamtxStatus = null;
-    if (updateData.technical?.streamUrl && camera.technical?.streamUrl) {
-      const mtxResult = await mediamtxService.updatePath(camera.cameraId, camera.technical.streamUrl);
+    if (updateData.technical?.rtspUrl && camera.technical?.rtspUrl) {
+      const mtxResult = await mediamtxService.updatePath(camera.cameraId, camera.technical.rtspUrl);
       mediamtxStatus = {
         synced: mtxResult.success,
         message: mtxResult.message
