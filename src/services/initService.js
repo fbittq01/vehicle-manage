@@ -1,5 +1,6 @@
-import { User } from '../models/index.js';
+import { User, Camera } from '../models/index.js';
 import { initCameras } from './initCameraService.js';
+import mediamtxService from './mediamtxService.js';
 
 // Tạo super admin account khi khởi động ứng dụng
 export const createSuperAdmin = async () => {
@@ -34,6 +35,52 @@ export const createSuperAdmin = async () => {
   }
 };
 
+// Đồng bộ tất cả camera paths vào MediaMTX khi server khởi động
+export const syncMediaMTXPaths = async () => {
+  try {
+    console.log('🔄 Syncing camera paths to MediaMTX...');
+    
+    // Kiểm tra MediaMTX service có enabled không
+    if (!mediamtxService.isEnabled()) {
+      console.log('⏭️ MediaMTX service is disabled, skipping sync');
+      return;
+    }
+
+    // Kiểm tra MediaMTX server có khả dụng không
+    const healthCheck = await mediamtxService.checkHealth();
+    if (!healthCheck.available) {
+      console.warn(`⚠️ MediaMTX server is not available: ${healthCheck.message}`);
+      console.warn('⚠️ Skipping MediaMTX sync - paths will not be available until MediaMTX is running');
+      return;
+    }
+
+    // Lấy tất cả active cameras có streamUrl
+    const cameras = await Camera.find({
+      'status.isActive': true,
+      'technical.streamUrl': { $exists: true, $ne: null }
+    });
+
+    if (cameras.length === 0) {
+      console.log('ℹ️ No active cameras with stream URLs found, skipping sync');
+      return;
+    }
+
+    // Đồng bộ paths
+    const result = await mediamtxService.syncAllPaths(cameras);
+    
+    console.log(`✅ MediaMTX sync completed: ${result.success}/${result.total} paths synced`);
+    
+    if (result.failed > 0) {
+      console.warn(`⚠️ ${result.failed} paths failed to sync`);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('❌ Error syncing MediaMTX paths:', error);
+    // Không throw error - không muốn block server startup nếu MediaMTX không khả dụng
+  }
+};
+
 // Service để quản lý database initialization
 export const initializeDatabase = async () => {
   try {
@@ -44,6 +91,9 @@ export const initializeDatabase = async () => {
     
     // Khởi tạo dữ liệu camera mẫu
     // await initCameras();
+    
+    // Đồng bộ camera paths vào MediaMTX
+    await syncMediaMTXPaths();
     
     // Có thể thêm các initialization khác ở đây
     // Ví dụ: tạo default gates, vehicle types, etc.

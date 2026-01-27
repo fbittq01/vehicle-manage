@@ -1,0 +1,28 @@
+# Log level: debug, info, warn
+logLevel: info
+
+# Enable Control API (cho phép quản lý paths qua HTTP API)
+api: yes
+apiAddress: :9997
+
+# RTSP server
+rtsp: yes
+rtspAddress: :8554
+
+# HLS server
+hls: yes
+hlsAddress: :8888
+
+# WebRTC server
+webrtc: yes
+webrtcAddress: :8889
+webrtcICEHostNAT1To1IPs: ["10.0.1.103"]
+
+# Paths configuration
+# Lưu ý: Paths được thêm qua API sẽ KHÔNG được lưu vào file này
+# và sẽ mất khi MediaMTX restart. Node.js server sẽ tự động sync lại.
+
+# Tạm thời comment để test thêm paths qua API
+# paths:
+#   camera1:
+#     source: rtsp://admin:ictech12@192.168.1.230:554/Streaming/Channels/102
