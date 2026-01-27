@@ -3,6 +3,7 @@ import { sendSuccessResponse, sendErrorResponse } from '../utils/response.js';
 import { createDepartmentFilter, checkResourceAccess } from '../utils/departmentFilter.js';
 import { getCameraStatsByDepartment } from '../utils/departmentStats.js';
 import socketService from '../socket/socketService.js';
+import mediamtxService from '../services/mediamtxService.js';
 
 // Lấy danh sách camera
 export const getCameras = async (req, res) => {
@@ -147,7 +148,24 @@ export const createCamera = async (req, res) => {
     // Thêm thông tin mật khẩu đã hash
     const cameraObj = populatedCamera.toObject();
 
-    return sendSuccessResponse(res, cameraObj, 'Tạo camera thành công', 201);
+    // Đồng bộ với MediaMTX nếu có streamUrl
+    let mediamtxStatus = null;
+    if (camera.technical?.streamUrl) {
+      const mtxResult = await mediamtxService.addPath(camera.cameraId, camera.technical.streamUrl);
+      mediamtxStatus = {
+        synced: mtxResult.success,
+        message: mtxResult.message
+      };
+      
+      if (!mtxResult.success) {
+        console.warn(`⚠️ MediaMTX sync failed for camera ${camera.cameraId}: ${mtxResult.message}`);
+      }
+    }
+
+    return sendSuccessResponse(res, { 
+      ...cameraObj, 
+      mediamtxStatus 
+    }, 'Tạo camera thành công', 201);
 
   } catch (error) {
     console.error('Lỗi khi tạo camera:', error);
@@ -266,7 +284,24 @@ export const updateCamera = async (req, res) => {
     // Thêm thông tin mật khẩu đã mã hóa
     const cameraObj = populatedCamera.toObject();
 
-    return sendSuccessResponse(res, cameraObj, 'Cập nhật camera thành công');
+    // Đồng bộ với MediaMTX nếu streamUrl có thay đổi
+    let mediamtxStatus = null;
+    if (updateData.technical?.streamUrl && camera.technical?.streamUrl) {
+      const mtxResult = await mediamtxService.updatePath(camera.cameraId, camera.technical.streamUrl);
+      mediamtxStatus = {
+        synced: mtxResult.success,
+        message: mtxResult.message
+      };
+      
+      if (!mtxResult.success) {
+        console.warn(`⚠️ MediaMTX sync failed for camera ${camera.cameraId}: ${mtxResult.message}`);
+      }
+    }
+
+    return sendSuccessResponse(res, { 
+      ...cameraObj, 
+      mediamtxStatus 
+    }, 'Cập nhật camera thành công');
 
   } catch (error) {
     console.error('Lỗi khi cập nhật camera:', error);
@@ -295,7 +330,21 @@ export const deleteCamera = async (req, res) => {
     camera.status.connectionStatus = 'maintenance';
     await camera.save();
 
-    return sendSuccessResponse(res, null, 'Xóa camera thành công');
+    // Xóa path khỏi MediaMTX
+    let mediamtxStatus = null;
+    if (camera.cameraId) {
+      const mtxResult = await mediamtxService.deletePath(camera.cameraId);
+      mediamtxStatus = {
+        deleted: mtxResult.success,
+        message: mtxResult.message
+      };
+      
+      if (!mtxResult.success) {
+        console.warn(`⚠️ MediaMTX delete failed for camera ${camera.cameraId}: ${mtxResult.message}`);
+      }
+    }
+
+    return sendSuccessResponse(res, { mediamtxStatus }, 'Xóa camera thành công');
 
   } catch (error) {
     console.error('Lỗi khi xóa camera:', error);
