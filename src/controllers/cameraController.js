@@ -162,6 +162,9 @@ export const createCamera = async (req, res) => {
       }
     }
 
+    // Thông báo cho Python server cập nhật config
+    socketService.notifyCameraListUpdate();
+
     return sendSuccessResponse(res, { 
       ...cameraObj, 
       mediamtxStatus 
@@ -298,6 +301,9 @@ export const updateCamera = async (req, res) => {
       }
     }
 
+    // Thông báo cho Python server cập nhật config
+    socketService.notifyCameraListUpdate();
+
     return sendSuccessResponse(res, { 
       ...cameraObj, 
       mediamtxStatus 
@@ -343,6 +349,9 @@ export const deleteCamera = async (req, res) => {
         console.warn(`⚠️ MediaMTX delete failed for camera ${camera.cameraId}: ${mtxResult.message}`);
       }
     }
+
+    // Thông báo cho Python server cập nhật config
+    socketService.notifyCameraListUpdate();
 
     return sendSuccessResponse(res, { mediamtxStatus }, 'Xóa camera thành công');
 
