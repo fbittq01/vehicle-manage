@@ -380,7 +380,7 @@ export const cameraSchema = Joi.object({
     }).optional(),
     processingInterval: Joi.number().min(100).optional(),
     supportedVehicleTypes: Joi.array()
-      .items(Joi.string().valid('car', 'motorcycle', 'truck', 'bus', 'bicycle', 'other'))
+      .items(Joi.string().valid('car', 'motorcycle', 'truck', 'bus', 'bicycle', 'other', 'all'))
       .min(1)
       .unique()
       .optional()
