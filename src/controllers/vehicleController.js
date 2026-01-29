@@ -9,7 +9,7 @@ import { getVehicleStatsByDepartment } from '../utils/departmentStats.js';
 // Lấy danh sách vehicles
 export const getVehicles = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPaginationParams(req);
-  const { vehicleType, isActive, search, owner } = req.query;
+  const { vehicleType, isActive, search, owner, departmentId } = req.query;
 
   // Build base query filter
   const baseFilter = {
@@ -22,13 +22,44 @@ export const getVehicles = asyncHandler(async (req, res) => {
     baseFilter.isActive = isActive === 'true';
   }
   if (owner) baseFilter.owner = owner;
+
+  if (departmentId) {
+    const departmentUsers = await User.find({ department: departmentId }).select('_id');
+    const departmentUserIds = departmentUsers.map(u => u._id);
+
+    if (baseFilter.owner) {
+      // Nếu đã có filter owner, kiểm tra xem owner đó có thuộc department này không
+      const isOwnerInDept = departmentUserIds.some(id => id.toString() === baseFilter.owner.toString());
+      if (!isOwnerInDept) {
+        // Owner không thuộc department -> không tìm thấy kết quả
+        baseFilter.owner = { $in: [] };
+      }
+    } else {
+      baseFilter.owner = { $in: departmentUserIds };
+    }
+  }
   
   if (search) {
     const normalizedSearch = normalizeLicensePlate(search);
+    
+    // Tìm các users thuộc department có tên khớp với từ khóa tìm kiếm
+    const matchingDepartments = await Department.find({
+      name: { $regex: search, $options: 'i' }
+    }).select('_id');
+    
+    const departmentIds = matchingDepartments.map(dept => dept._id);
+    
+    const matchingUsers = await User.find({
+      department: { $in: departmentIds }
+    }).select('_id');
+    
+    const matchingUserIds = matchingUsers.map(user => user._id);
+
     baseFilter.$or = [
       { licensePlate: { $regex: normalizedSearch, $options: 'i' } },
       { name: { $regex: search, $options: 'i' } },
-      { color: { $regex: search, $options: 'i' } }
+      { color: { $regex: search, $options: 'i' } },
+      { owner: { $in: matchingUserIds } }
     ];
   }
 
@@ -39,7 +70,14 @@ export const getVehicles = asyncHandler(async (req, res) => {
       allowSelfOnly: true
     });
 
-    const filter = { ...baseFilter, ...departmentFilter };
+    // Sử dụng $and để đảm bảo cả baseFilter (từ query) và departmentFilter (từ RBAC) đều được áp dụng
+    // Điều này quan trọng để đảm bảo logic "check department" không bị override bởi RBAC
+    const filter = {
+      $and: [
+        baseFilter,
+        departmentFilter
+      ]
+    };
 
     // Execute query
     const [vehicles, total] = await Promise.all([
@@ -141,7 +179,7 @@ export const createVehicle = asyncHandler(async (req, res) => {
   }
 
   // Kiểm tra biển số đã tồn tại
-  const existingVehicle = await Vehicle.findOne({ licensePlate: normalizedPlate });
+  const existingVehicle = await Vehicle.findOne({ licensePlate: normalizedPlate, isActive: true });
   if (existingVehicle) {
     return sendErrorResponse(res, 'Biển số xe đã tồn tại', 400);
   }
