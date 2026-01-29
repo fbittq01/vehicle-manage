@@ -1,4 +1,4 @@
-import { User } from '../models/index.js';
+import { User, Department } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '../utils/response.js';
 import { getPaginationParams, createPagination } from '../utils/response.js';
 import { asyncHandler } from '../middleware/logger.js';
@@ -8,19 +8,27 @@ import { getUserStatsByDepartment } from '../utils/departmentStats.js';
 // Lấy danh sách tất cả users (admin only)
 export const getUsers = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPaginationParams(req);
-  const { role, isActive, search } = req.query;
+  const { role, isActive, search, departmentId } = req.query;
 
   // Build base query filter
   const baseFilter = {};
   
   if (role) baseFilter.role = role;
   if (isActive !== undefined) baseFilter.isActive = isActive === 'true';
+  if (departmentId) baseFilter.department = departmentId;
   
   if (search) {
+    // Tìm các department có tên khớp với search
+    const matchingDepartments = await Department.find({
+      name: { $regex: search, $options: 'i' }
+    }).select('_id');
+    const departmentIds = matchingDepartments.map(d => d._id);
+
     baseFilter.$or = [
       { name: { $regex: search, $options: 'i' } },
       { username: { $regex: search, $options: 'i' } },
-      { employeeId: { $regex: search, $options: 'i' } }
+      { employeeId: { $regex: search, $options: 'i' } },
+      { department: { $in: departmentIds } }
     ];
   }
 
@@ -32,16 +40,13 @@ export const getUsers = asyncHandler(async (req, res) => {
       allowSelfOnly: req.user.role === 'user' // User chỉ xem thông tin của mình
     });
 
-    const filter = { ...baseFilter, ...departmentFilter };
-
-    // Fix conflict: baseFilter and departmentFilter both use $or
-    if (baseFilter.$or && departmentFilter.$or) {
-      filter.$and = [
-        { $or: baseFilter.$or },
-        { $or: departmentFilter.$or }
-      ];
-      delete filter.$or;
-    }
+    // Sử dụng $and để đảm bảo cả baseFilter (từ query) và departmentFilter (từ RBAC) đều được áp dụng
+    const filter = {
+      $and: [
+        baseFilter,
+        departmentFilter
+      ]
+    };
 
     // Execute query
     const [users, total] = await Promise.all([

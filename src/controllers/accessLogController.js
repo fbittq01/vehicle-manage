@@ -1,4 +1,4 @@
-import { AccessLog, Vehicle, User, WorkingHours, WorkingHoursRequest, Camera } from '../models/index.js';
+import { AccessLog, Vehicle, User, WorkingHours, WorkingHoursRequest, Camera, Department } from '../models/index.js';
 import { sendSuccessResponse, sendErrorResponse, sendPaginatedResponse } from '../utils/response.js';
 import { getPaginationParams, createPagination, getStartOfDay, getEndOfDay } from '../utils/response.js';
 import { normalizeLicensePlate } from '../utils/licensePlate.js';
@@ -867,7 +867,9 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
     startDate,
     endDate,
     violationType = 'both', // 'late', 'early', 'both'
-    limit = 10
+    limit = 10,
+    departmentId,
+    search
   } = req.query;
 
   if (!startDate || !endDate) {
@@ -883,15 +885,67 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 'Chưa có cài đặt giờ làm việc nào được kích hoạt', 404);
   }
 
-  const filter = {
+  // Base Query
+  const baseQuery = {
     createdAt: { $gte: start, $lte: end },
     owner: { $exists: true },
     verificationStatus: { $in: ['auto_approved', 'approved'] }
   };
 
-  // Nếu user thường, chỉ xem vi phạm của mình
+  // RBAC Filter
+  const departmentFilter = await createDepartmentFilter(req.user, {
+    ownerField: 'owner',
+    allowSelfOnly: true
+  });
+
+  // User Query Conditions (departmentId, search)
+  const userQueryConditions = [];
+
+  if (departmentId) {
+    const usersInDept = await User.find({ department: departmentId }).select('_id');
+    const ids = usersInDept.map(u => u._id);
+    userQueryConditions.push({ owner: { $in: ids } });
+  }
+
+  if (search) {
+    const normalizedPlate = normalizeLicensePlate(search);
+    
+    // Tìm các department khớp tên
+    const matchingDepts = await Department.find({ 
+      name: { $regex: search, $options: 'i' } 
+    }).select('_id');
+    const deptIds = matchingDepts.map(d => d._id);
+    
+    // Tìm users khớp tên, phone hoặc thuộc department tìm thấy
+    const matchingUsers = await User.find({
+      $or: [
+        { name: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+        { department: { $in: deptIds } }
+      ]
+    }).select('_id');
+    const userIds = matchingUsers.map(u => u._id);
+
+    userQueryConditions.push({
+      $or: [
+        { licensePlate: { $regex: normalizedPlate, $options: 'i' } },
+        { owner: { $in: userIds } }
+      ]
+    });
+  }
+
+  // Combine Final Filter using $and for strict intersection
+  const filter = {
+    $and: [
+      baseQuery,
+      departmentFilter,
+      ...userQueryConditions
+    ]
+  };
+
+  // Nếu user thường, baseQuery/departmentFilter đã handle rồi, nhưng thêm dòng này cho rõ ràng logic cũ
   if (req.user.role === 'user') {
-    filter.owner = req.user._id;
+    // departmentFilter handles this via createDepartmentFilter options
   }
 
   const logs = await AccessLog.find(filter)
