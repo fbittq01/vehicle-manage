@@ -56,14 +56,6 @@ class SocketService {
   // Thiết lập các event handlers cho client connections
   setupSocketHandlers() {
     this.io.on('connection', (socket) => {
-      const timestamp = new Date().toISOString();
-      const clientInfo = {
-        id: socket.id,
-        ip: socket.handshake.address,
-        userAgent: socket.handshake.headers['user-agent'],
-        origin: socket.handshake.headers.origin
-      };
-      
       // Log minimal khi client connect
       if (process.env.SOCKET_DEBUG === 'true') {
         console.log(`🔌 Client connected: ${socket.id}`);
@@ -72,7 +64,7 @@ class SocketService {
       // Xác thực client và subscribe notifications
       socket.on('authenticate', async (data) => {
         try {
-          const { userId, role, departmentId, token } = data;
+          const { userId, role, departmentId } = data;
           
           // Debug logging (chỉ bật khi cần)
           // console.log(`🔍 Authentication: ${userId} (${role})`);
@@ -278,7 +270,7 @@ class SocketService {
       // Xử lý request manual verification
       socket.on('manual_verification_request', async (data) => {
         try {
-          const { accessLogId, action } = data;
+          const { accessLogId } = data;
           const accessLog = await AccessLog.findById(accessLogId);
           
           if (accessLog) {
@@ -295,7 +287,7 @@ class SocketService {
       });
 
       // Xử lý disconnect
-      socket.on('disconnect', (reason) => {
+      socket.on('disconnect', () => {
         const clientInfo = this.connectedClients.get(socket.id);
         
         // Log minimal khi disconnect
@@ -541,12 +533,6 @@ class SocketService {
       // Chuẩn hóa biển số
       const normalizedPlate = normalizeLicensePlate(licensePlate);
       
-      // if (!validateVietnameseLicensePlate(normalizedPlate)) {
-      //   console.warn('Invalid license plate format:', normalizedPlate);
-      //   this.io.emit('invalid_license_plate', { licensePlate, gateId });
-      //   return;
-      // }
-
       // Chuẩn bị dữ liệu recognition
       const recognitionData = {
         confidence,
@@ -568,14 +554,7 @@ class SocketService {
       };
 
       // Sử dụng logic từ controller để tạo access log
-      const { populatedLog, vehicle } = await createAccessLogLogic(logData);
-
-      // Broadcast tới clients
-      const responseData = {
-        accessLog: populatedLog,
-        vehicle,
-        needsManualVerification: populatedLog.verificationStatus === 'pending'
-      };
+      const { populatedLog } = await createAccessLogLogic(logData);
 
       // Gửi thông báo khi cần xác minh (xe lạ hoặc xe pending)
       try {

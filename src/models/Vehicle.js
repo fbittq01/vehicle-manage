@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { formatLicensePlate } from '../utils/licensePlate.js';
 
 const vehicleSchema = new mongoose.Schema({
   licensePlate: {
@@ -7,7 +8,6 @@ const vehicleSchema = new mongoose.Schema({
     unique: true,
     uppercase: true,
     trim: true,
-    match: [/^[0-9]{2}[A-Z]{1,2}-[0-9]{3,4}\.[0-9]{2}$|^[0-9]{2}[A-Z]{1,2}[0-9]{3,4}$/, 'Biển số xe không hợp lệ']
   },
   owner: {
     type: mongoose.Schema.Types.ObjectId,
@@ -49,7 +49,14 @@ const vehicleSchema = new mongoose.Schema({
     type: Date
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+// Virtual field để format biển số về dạng đẹp
+vehicleSchema.virtual('formattedLicensePlate').get(function() {
+  return formatLicensePlate(this.licensePlate);
 });
 
 // Indexes cho tìm kiếm hiệu quả
