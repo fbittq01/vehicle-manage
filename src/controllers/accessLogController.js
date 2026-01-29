@@ -898,7 +898,6 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
     .populate('owner', 'name username employeeId department')
     .populate('vehicle', 'licensePlate name')
     .sort({ createdAt: 1 });
-  console.log("🚀 ~ logs:", logs)
 
   // Phân tích vi phạm theo user
   const userViolations = {};
@@ -918,7 +917,6 @@ export const getWorkingHoursViolations = asyncHandler(async (req, res) => {
 
     // Sử dụng shift-based logic
     const violationCheck = checkViolationWithShift(log, workingHoursList);
-    console.log("🚀 ~ violationCheck:", violationCheck)
 
     if (log.action === 'entry' && violationCheck.isViolation && violationCheck.status === 'late') {
       userViolations[userId].lateEntries.push({

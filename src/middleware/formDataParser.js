@@ -29,7 +29,7 @@ export const uploadExcelFile = multer({
       cb(new Error('Chỉ chấp nhận file Excel (.xlsx, .xls)'), false);
     }
   }
-}).single('excelFile');
+}).single('file');
 
 /**
  * Middleware để xử lý form data và chuyển đổi thành object nested
