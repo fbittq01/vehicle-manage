@@ -85,10 +85,8 @@ export const loginSchema = Joi.object({
 
 export const vehicleSchema = Joi.object({
   licensePlate: Joi.string()
-    .pattern(/^[0-9]{2}[A-Z]{1,2}-[0-9]{3,4}\.[0-9]{2}$|^[0-9]{2}[A-Z]{1,2}[0-9]{3,4}$/)
     .required()
     .messages({
-      'string.pattern.base': 'Biển số xe không đúng định dạng',
       'any.required': 'Biển số xe là bắt buộc'
     }),
   owner: Joi.string()
@@ -169,10 +167,8 @@ export const accessLogSchema = Joi.object({
 // Update Access Log Info Schema
 export const updateAccessLogInfoSchema = Joi.object({
   licensePlate: Joi.string()
-    .pattern(/^[0-9]{2}[A-Z]{1,2}[\s\-]?[0-9]{3,5}$/)
     .required()
     .messages({
-      'string.pattern.base': 'Biển số xe không đúng định dạng (VD: 29A-12345)',
       'any.required': 'Biển số xe là bắt buộc'
     }),
   confidence: Joi.number()
@@ -713,10 +709,8 @@ export const workingHoursRequestSchema = Joi.object({
     }),
   
   licensePlate: Joi.string()
-    .pattern(/^[0-9]{2}[A-Z]{1,2}-[0-9]{3,4}\.[0-9]{2}$|^[0-9]{2}[A-Z]{1,2}[0-9]{3,5}$/)
     .required()
     .messages({
-      'string.pattern.base': 'Biển số xe không đúng định dạng (VD: 30A-123.45)',
       'any.required': 'Biển số xe là bắt buộc'
     }),
   
@@ -766,11 +760,7 @@ export const updateWorkingHoursRequestSchema = Joi.object({
     }),
   
   licensePlate: Joi.string()
-    .pattern(/^[0-9]{2}[A-Z]{1,2}-[0-9]{3,4}\.[0-9]{2}$|^[0-9]{2}[A-Z]{1,2}[0-9]{3,5}$/)
-    .optional()
-    .messages({
-      'string.pattern.base': 'Biển số xe không đúng định dạng (VD: 30A-123.45)'
-    }),
+    .optional(),
   
   reason: Joi.string()
     .min(10)

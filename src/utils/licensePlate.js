@@ -1,121 +1,54 @@
-// Utility functions để xử lý biển số xe
-
 /**
- * Định nghĩa các loại biển số xe Việt Nam
- * Mỗi pattern gồm: regex để match, hàm format kết quả
+ * Chuẩn hóa biển số xe về dạng chuỗi ký tự liền mạch (A-Z0-9).
+ * Loại bỏ khoảng trắng, dấu chấm, dấu gạch ngang và các ký tự đặc biệt.
+ * Ví dụ: "29-M1 123.45" -> "29M112345"
+ * * @param {string} plate - Biển số xe thô (raw input)
+ * @returns {string} Biển số đã chuẩn hóa
  */
-const LICENSE_PLATE_PATTERNS = [
-  // === XE ĐẶC BIỆT (prefix chữ) ===
-  {
-    name: 'Xe quân đội',
-    match: /^(QĐ|QD)(\d{4,5})$/,
-    format: (m) => `${m[1]}-${m[2]}`
-  },
-  {
-    name: 'Xe công an',
-    match: /^(CA)(\d{4,5})$/,
-    format: (m) => `${m[1]}-${m[2]}`
-  },
-  {
-    name: 'Xe ngoại giao',
-    match: /^(NG|NN|QT|ĐN|Đ)(\d{4,6})$/,
-    format: (m) => `${m[1]}-${m[2]}`
-  },
-  
-  // === Ô TÔ (6 số cuối, có dấu chấm) ===
-  {
-    name: 'Ô tô mới (2 chữ)',
-    match: /^(\d{2}[A-Z]{2})(\d{4})(\d{2})$/,
-    format: (m) => `${m[1]}-${m[2]}.${m[3]}`
-  },
-  
-  // === XE MÁY (5 số cuối, có dấu chấm) ===
-  {
-    name: 'Xe máy mới (2 chữ)',
-    match: /^(\d{2}[A-Z]{2})(\d{3})(\d{2})$/,
-    format: (m) => `${m[1]}-${m[2]}.${m[3]}`
-  },
-  {
-    name: 'Xe máy mới (1 chữ + 1 số)',
-    match: /^(\d{2}[A-Z]\d)(\d{3})(\d{2})$/,
-    format: (m) => `${m[1]}-${m[2]}.${m[3]}`
-  },
-  {
-    name: 'Ô tô cũ (1 chữ)',
-    match: /^(\d{2}[A-Z])(\d{3})(\d{2})$/,
-    format: (m) => `${m[1]}-${m[2]}.${m[3]}`
-  },
-  
-  // === XE MÁY (4 số cuối, không dấu chấm) ===
-  {
-    name: 'Xe máy (1 chữ + 1 số + 4 số)',
-    match: /^(\d{2}[A-Z]\d)(\d{4})$/,
-    format: (m) => `${m[1]}-${m[2]}`
-  },
-  {
-    name: 'Xe máy cũ (4 số)',
-    match: /^(\d{2}[A-Z])(\d{4})$/,
-    format: (m) => `${m[1]}-${m[2]}`
-  },
-  
-  // === XE TẢI, BUS (5 số cuối, không dấu chấm) ===
-  {
-    name: 'Xe tải/bus',
-    match: /^(\d{2}[A-Z])(\d{5})$/,
-    format: (m) => `${m[1]}-${m[2]}`
-  },
-];
-
-/**
- * Chuẩn hóa biển số xe Việt Nam
- */
-export const normalizeLicensePlate = (licensePlate) => {
-  if (!licensePlate) return '';
-  
-  // Làm sạch input: uppercase, bỏ khoảng trắng và ký tự không hợp lệ
-  const cleanPlate = licensePlate
-    .toString()
-    .toUpperCase()
-    .trim()
-    .replace(/\s+/g, '')
-    .replace(/[^0-9A-ZĐ]/g, '');
-  
-  if (!cleanPlate) return '';
-  
-  // Tìm pattern phù hợp và format
-  for (const pattern of LICENSE_PLATE_PATTERNS) {
-    const match = cleanPlate.match(pattern.match);
-    if (match) {
-      return pattern.format(match);
-    }
-  }
-  
-  // Fallback: trả về bản gốc đã làm sạch
-  return cleanPlate;
+export const normalizeLicensePlate = (plate) => {
+    if (!plate) return "";
+    // 1. Chuyển thành chữ in hoa
+    // 2. Thay thế tất cả ký tự KHÔNG PHẢI là chữ (A-Z) hoặc số (0-9) bằng chuỗi rỗng
+    return plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
 };
 
 /**
- * Validate định dạng biển số xe Việt Nam
- * Sử dụng normalizeLicensePlate và kiểm tra kết quả có khớp pattern hợp lệ không
+ * Kiểm tra tính hợp lệ của biển số xe Việt Nam dựa trên dữ liệu mẫu.
+ * Hỗ trợ:
+ * - Xe máy/Ô tô 5 số (VD: 29M1-923.03, 30F-254.38)
+ * - Xe máy/Ô tô 4 số cũ (VD: 30S-4894)
+ * - Xe máy điện/Xe 50cc (VD: 29AA-63254)
+ * - Xe quân sự/đặc biệt (VD: TN-354)
+ * * @param {string} plate - Biển số xe cần kiểm tra
+ * @returns {boolean} True nếu hợp lệ, False nếu không hợp lệ
  */
-export const validateVietnameseLicensePlate = (licensePlate) => {
-  const normalized = normalizeLicensePlate(licensePlate);
-  
-  if (!normalized || normalized.length < 6) return false;
-  
-  // Các pattern validation cho output đã normalize
-  const validPatterns = [
-    // Xe đặc biệt
-    /^(QĐ|QD)-\d{4,5}$/,
-    /^CA-\d{4,5}$/,
-    /^(NG|NN|QT|ĐN|Đ)-\d{4,6}$/,
-    // Ô tô/Xe máy có dấu chấm
-    /^\d{2}[A-Z]{1,2}-\d{3,4}\.\d{2}$/,
-    // Xe máy/Xe tải không dấu chấm
-    /^\d{2}[A-Z]\d?-\d{4,5}$/,
-  ];
-  
-  return validPatterns.some(pattern => pattern.test(normalized));
+export const validateVietnameseLicensePlate = (plate) => {
+    const cleanPlate = normalizeLicensePlate(plate);
+
+    // Kiểm tra độ dài cơ bản sau khi clean (ngắn nhất là 5 ký tự cho xe quân sự, dài nhất là 9 ký tự)
+    if (cleanPlate.length < 5 || cleanPlate.length > 9) {
+        return false;
+    }
+
+    /**
+     * REGEX 1: XE DÂN SỰ (Civilian)
+     * Cấu trúc: [Mã tỉnh][Series][Số]
+     * ^(\d{2})        : Bắt đầu bằng 2 số (Mã tỉnh, VD: 29, 30, 59...)
+     * ([A-Z][A-Z0-9]?): Series. Có thể là 1 chữ cái (VD: 30L) hoặc 1 chữ + 1 số (VD: 29M1) hoặc 2 chữ (VD: 29AA)
+     * (\d{4,5})$      : Kết thúc bằng 4 hoặc 5 chữ số
+     */
+    const civilianRegex = /^(\d{2})([A-Z][A-Z0-9]?)(\d{4,5})$/;
+
+    /**
+     * REGEX 2: XE QUÂN SỰ / ĐẶC BIỆT (Army/Special)
+     * Dựa trên mẫu data: "TN-354"
+     * ^([A-Z]{2}) : Bắt đầu bằng 2 chữ cái (VD: TN, TM, KD...)
+     * (\d{3,5})$  : Theo sau là 3 đến 5 chữ số
+     */
+    const armyRegex = /^([A-Z]{2})(\d{3,5})$/;
+
+    // Trả về true nếu khớp 1 trong 2 định dạng
+    return civilianRegex.test(cleanPlate) || armyRegex.test(cleanPlate);
 };
 
 // Phân tích thông tin từ biển số xe
@@ -184,5 +117,116 @@ export const formatLicensePlateDisplay = (licensePlate) => {
   
   // Trả về biển số đã được chuẩn hóa
   return normalized;
+};
+
+/**
+ * Format biển số xe về dạng đẹp, dễ đọc.
+ * Dựa trên dữ liệu thực tế từ Book1.xlsx:
+ * 
+ * XE MÁY (motorcycle) - 5 số có dấu chấm:
+ * - Series 2 chữ + 5 số: "29AA-63254" → "29AA-632.54"
+ * - Series 1 chữ + 1 số + 5 số: "29M1-923.03" → "29M1-923.03"
+ * 
+ * XE MÁY (motorcycle) - 4 số không có dấu chấm:
+ * - Series 1 chữ + 1 số + 4 số: "29Y2-5306" → "29Y2-5306"
+ * - Series 1 chữ + 4 số: "30S-4894" → "30S-4894"
+ * 
+ * Ô TÔ (car) - 5 số có dấu chấm:
+ * - Series 1 chữ + 5 số: "30F-25438" → "30F-254.38"
+ * 
+ * XE QUÂN SỰ:
+ * - "TN-354" → "TN-354"
+ * 
+ * @param {string} plate - Biển số xe (có thể đã hoặc chưa chuẩn hóa)
+ * @returns {string} Biển số đã được format đẹp
+ */
+export const formatLicensePlate = (plate) => {
+  if (!plate) return "";
+  
+  const cleanPlate = normalizeLicensePlate(plate);
+  
+  // Kiểm tra độ dài tối thiểu
+  if (cleanPlate.length < 5) {
+    return cleanPlate;
+  }
+  
+  // === BIỂN 9 KÝ TỰ (2 số tỉnh + 2 chữ series + 5 số) ===
+  // REGEX 1: XE MÁY - Series 2 chữ cái (AA) + 5 số (VD: 29AA63254 -> 29AA-632.54)
+  // Mẫu: 29AA-63254, 29BN-02787
+  const motorcycle2Letter5DigitRegex = /^(\d{2})([A-Z]{2})(\d{5})$/;
+  const match2Letter5Digit = cleanPlate.match(motorcycle2Letter5DigitRegex);
+  if (match2Letter5Digit) {
+    const [, province, series, numbers] = match2Letter5Digit;
+    return `${province}${series}-${numbers.slice(0, 3)}.${numbers.slice(3)}`;
+  }
+  
+  // === BIỂN 9 KÝ TỰ (2 số tỉnh + 1 chữ + 1 số series + 5 số) ===
+  // REGEX 2: XE MÁY - Series 1 chữ + 1 số + 5 số (VD: 29M192303 -> 29M1-923.03)
+  // Mẫu: 29M1-923.03, 29L1-239.94, 29X5-38909
+  const motorcycle1Letter1Digit5DigitRegex = /^(\d{2})([A-Z])(\d)(\d{5})$/;
+  const match1Letter1Digit5Digit = cleanPlate.match(motorcycle1Letter1Digit5DigitRegex);
+  if (match1Letter1Digit5Digit) {
+    const [, province, letter, seriesDigit, numbers] = match1Letter1Digit5Digit;
+    return `${province}${letter}${seriesDigit}-${numbers.slice(0, 3)}.${numbers.slice(3)}`;
+  }
+  
+  // === BIỂN 8 KÝ TỰ - Cần phân biệt dựa trên format input ===
+  if (cleanPlate.length === 8) {
+    // Phân tích input gốc để xác định format
+    const originalPlate = plate.toUpperCase().trim();
+    
+    // Pattern xe máy: có format XX[chữ][số]-XXXX (dấu gạch ngang sau 4 ký tự đầu)
+    // VD: 29Y2-5306, 29H7-1452, 30N9-6749
+    const motorcycleInputPattern = /^\d{2}[A-Z]\d[\s\-\.]+\d{4}$/;
+    if (motorcycleInputPattern.test(originalPlate.replace(/\s+/g, ''))) {
+      const match = cleanPlate.match(/^(\d{2})([A-Z])(\d)(\d{4})$/);
+      if (match) {
+        const [, province, letter, seriesDigit, numbers] = match;
+        return `${province}${letter}${seriesDigit}-${numbers}`;
+      }
+    }
+    
+    // Pattern ô tô: có format XX[chữ]-XXXXX hoặc XX[chữ] XXXXX (dấu gạch ngang/khoảng trắng sau 3 ký tự đầu)
+    // VD: 30F-25438, 30L 54854, 29A-53383
+    const carInputPattern = /^\d{2}[A-Z][\s\-\.]+\d{5}$/;
+    if (carInputPattern.test(originalPlate)) {
+      const match = cleanPlate.match(/^(\d{2})([A-Z])(\d{5})$/);
+      if (match) {
+        const [, province, series, numbers] = match;
+        return `${province}${series}-${numbers.slice(0, 3)}.${numbers.slice(3)}`;
+      }
+    }
+    
+    // Nếu không xác định được từ input, mặc định format như ô tô (1 chữ + 5 số)
+    // vì đây là format phổ biến hơn cho biển 8 ký tự
+    const defaultMatch = cleanPlate.match(/^(\d{2})([A-Z])(\d{5})$/);
+    if (defaultMatch) {
+      const [, province, series, numbers] = defaultMatch;
+      return `${province}${series}-${numbers.slice(0, 3)}.${numbers.slice(3)}`;
+    }
+  }
+  
+  // === BIỂN 7 KÝ TỰ (2 số tỉnh + 1 chữ + 4 số) ===
+  // REGEX: XE MÁY/Ô TÔ - Series 1 chữ + 4 số (VD: 30S4894 -> 30S-4894)
+  // Mẫu: 30S-4894
+  const vehicle1Letter4DigitRegex = /^(\d{2})([A-Z])(\d{4})$/;
+  const matchVehicle1Letter4Digit = cleanPlate.match(vehicle1Letter4DigitRegex);
+  if (matchVehicle1Letter4Digit) {
+    const [, province, series, numbers] = matchVehicle1Letter4Digit;
+    return `${province}${series}-${numbers}`;
+  }
+  
+  // === XE QUÂN SỰ / ĐẶC BIỆT ===
+  // REGEX: (VD: TN354 -> TN-354)
+  // Mẫu: TN-354
+  const armyRegex = /^([A-Z]{2})(\d{3,5})$/;
+  const matchArmy = cleanPlate.match(armyRegex);
+  if (matchArmy) {
+    const [, prefix, numbers] = matchArmy;
+    return `${prefix}-${numbers}`;
+  }
+  
+  // Fallback: trả về biển số đã normalize
+  return cleanPlate;
 };
 
