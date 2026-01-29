@@ -11,10 +11,7 @@ import {
   getVehicleStats
 } from '../controllers/vehicleController.js';
 import {
-  authenticateToken,
-  requireAdmin,
-  requireOwnershipOrAdmin
-} from '../middleware/auth.js';
+  authenticateToken} from '../middleware/auth.js';
 import {
   validateVehicle,
   validateUpdateVehicle

@@ -391,6 +391,7 @@ class ActivityLogger {
       'ACTIVATE_USER': 'Kích hoạt người dùng',
       'DEACTIVATE_USER': 'Vô hiệu hóa người dùng',
       'VIEW_USER': 'Xem người dùng',
+      'BULK_CREATE_USERS': 'Tạo hàng loạt người dùng',
       'BULK_UPDATE_USERS': 'Cập nhật hàng loạt người dùng',
       
       // Vehicle management actions
